@@ -73,7 +73,7 @@ if(NOT CHOMPI_SIM_STUB)
   file(GLOB DAISYSP_MODULE_DIRS LIST_DIRECTORIES true "${CHOMPI_FW_LIBS}/DaisySP/Source/*")
   list(FILTER DAISYSP_MODULE_DIRS EXCLUDE REGEX "\\.(h|cpp)$")
   target_include_directories(daisysp PUBLIC "${CHOMPI_FW_LIBS}/DaisySP/Source" ${DAISYSP_MODULE_DIRS} "${CMAKE_SOURCE_DIR}/host/compat")
-  target_compile_options(daisysp PRIVATE -w)
+  target_compile_options(daisysp PRIVATE -w "SHELL:-include ${CMAKE_SOURCE_DIR}/host/compat/chompi_sim_prelude.h")
 
   # ---- coreJSON ----
   add_library(corejson STATIC "${CHOMPI_FW_LIBS}/coreJSON/source/core_json.c")
@@ -99,7 +99,7 @@ if(NOT CHOMPI_SIM_STUB)
   # The firmware is written for arm-none-eabi-gcc; keep the host build quiet about its style.
   set_source_files_properties(${FW_SOURCES} PROPERTIES COMPILE_OPTIONS
     "-Wno-unused-variable;-Wno-unused-but-set-variable;-Wno-format;-Wno-sign-compare;-Wno-unused-function;-Wno-missing-field-initializers;-Wno-attributes;-Wno-unknown-attributes;-Wno-pedantic;-Wno-reorder;-Wno-unused-value;-Wno-parentheses;-Wno-misleading-indentation;-Wno-narrowing;-Wno-write-strings")
-  target_compile_options(chompi_sim PRIVATE -fno-strict-aliasing)
+  target_compile_options(chompi_sim PRIVATE -fno-strict-aliasing "SHELL:-include ${CMAKE_SOURCE_DIR}/host/compat/chompi_sim_prelude.h")
 
   # On macOS the low 4 GB of the address space is reserved (__PAGEZERO); shrink
   # it so the simulator can map the Daisy's SDRAM window at 0xC0000000.
