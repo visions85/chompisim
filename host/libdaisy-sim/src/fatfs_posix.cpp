@@ -169,13 +169,8 @@ extern "C"
             return FR_INVALID_OBJECT;
         if(!CardOk())
             return FR_NOT_READY;
-        if(fp->sim_fp)
-        {
-            std::fclose(Fp(fp));
-            delete static_cast<std::string*>(fp->sim_name);
-            fp->sim_fp = nullptr;
-            fp->sim_name = nullptr;
-        }
+        // Like FatFs, treat the FIL as uninitialised memory: f_open fills it in
+        // completely (a FIL on the stack holds garbage, never trust sim_fp here).
         std::string     hp = HostPath(path);
         std::error_code ec;
         bool            exists = fs::is_regular_file(hp, ec);
