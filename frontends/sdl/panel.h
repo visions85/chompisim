@@ -17,9 +17,9 @@
 namespace gui
 {
 
-/** Size of the logical canvas at --scale 1. */
+/** Size of the logical canvas at --scale 1 (the firmware bar, the instrument, the text rows). */
 constexpr int kPanelW = 1120;
-constexpr int kPanelH = 420;
+constexpr int kPanelH = 446;
 
 /** Computer keyboard key printed on each piano key, indexed by semitone. */
 extern const char* const kPianoKeyNames[25];
@@ -31,6 +31,7 @@ enum class HitKind
     FuncKey,  /**< index = chompi_sim::Button (KEY_PLAY / KEY_LOOP / KEY_CHOMPI) */
     Knob,     /**< index = chompi_sim::Encoder */
     Toggle,   /**< the mode switch */
+    FirmwareTab, /**< index into gui::kFirmwares, in the bar above the instrument */
 };
 
 struct Hit
@@ -48,6 +49,9 @@ struct UiState
     std::array<bool, chompi_sim::kNumEncoders>  knob_pressed{}; /**< encoder push switches */
     int                                          arrow_knob = -1; /**< small knob the Left/Right arrow keys turn */
     bool                                         keymap = true;   /**< draw the key map overlay */
+    std::string                                  firmware;        /**< id of the firmware running ("wave"); see firmware_info.h */
+    std::vector<std::string>                     firmwares_built; /**< ids the bar can switch to */
+    std::string                                  card_name;       /**< card folder, shown in the bar */
     Hit                                          hover;         /**< control under the mouse */
     std::string                                  status;        /**< status line */
     std::vector<std::string>                     log;           /**< last firmware log lines, oldest first */

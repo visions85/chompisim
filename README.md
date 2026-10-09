@@ -37,26 +37,27 @@ sudo dnf install git cmake gcc-c++ SDL2-devel
 ```
 
 ```sh
-scripts/fetch-firmware.sh wave        # sparse clone of CHOMPI-Club/CHOMPI into third_party/
+scripts/fetch-firmware.sh             # sparse clone of CHOMPI-Club/CHOMPI into third_party/ (all three firmwares)
 cmake -S . -B build
-cmake --build build -j
+cmake --build build -j                # every firmware found: chompi-sim-gui-wave, -tape, -tempo and the launchers
 
-# a folder plays the role of the microSD card; use a COPY of the factory card,
-# the firmware writes options.json / presets.json to it
-cp -R third_party/CHOMPI/firmware/card-profiles/wave-1.0 card
+# folders play the role of the microSD card; use COPIES of the factory cards,
+# the firmware writes options.json / presets.json to them
+cp -R third_party/CHOMPI/firmware/card-profiles cards
 
-./build/chompi-sim-gui --card card          # the instrument in a window
-./build/chompi-sim --card card --seconds 12 --script examples/phrase.txt --wav out.wav
+./build/chompi-sim-gui --cards cards        # the instrument in a window; the bar switches firmware
+./build/chompi-sim-gui --card cards/wave-1.0 # one card: the firmware is read off the card
+./build/chompi-sim --card cards/wave-1.0 --seconds 12 --script examples/phrase.txt --wav out.wav
 ```
 
-For TAPE or TEMPO, fetch and build with the firmware name:
-
-```sh
-scripts/fetch-firmware.sh tape tempo
-cmake -S . -B build-tape -DCHOMPI_FIRMWARE=tape && cmake --build build-tape -j
-cp -R third_party/CHOMPI/firmware/card-profiles/tape-2.0 card-tape
-./build-tape/chompi-sim-gui --card card-tape
-```
+`chompi-sim-gui` and `chompi-sim` are launchers: they pick the firmware from
+`--firmware NAME`, else from the firmware binary on the `--card` folder, else
+from the first firmware that has a card under `--cards DIR`, and run the
+matching `chompi-sim[-gui]-<firmware>` next to them. The tabs in the bar above
+the instrument reboot into another firmware the same way, with that firmware's
+card from the `--cards` folder (`wave`, `tape`, `tempo` or `wave-1.0`...).
+`scripts/fetch-firmware.sh wave` and `-DCHOMPI_FIRMWARES=wave` fetch and build
+a single firmware.
 
 Boot takes about seven seconds, like the hardware: boot animation, the rainbow
 wave, then the normal page. Keys do nothing until the rainbow has finished.
@@ -85,7 +86,15 @@ the mode switch is drawn where the board puts it.
      [z] [x] [c] [v] [b] [n] [m] [q] [w] [e] [r] [t] [y] [u] [i]               <- lower row of caps
 ```
 
-Each key cap is lit by the LED under it. A key map overlay, shown at start
+Each key cap is lit by the LED under it. The bar above the instrument names
+the firmware, in its colour, with tabs to switch, and the panel tells what the
+controls do in that firmware: the function of each knob and what its click
+pages hold (WAVE: attack, release, delay feedback...; TAPE: sample start and
+end, verb and delay, tape speed...; TEMPO: grain, clock division...), what
+CHOMPI, PLAY and LOOP do (record, looper, sequencer, pattern), and, when the
+mode switch is down, the menu layer printed on the caps: the black keys' jobs
+(save, copy, erase, banks, inputs, octave, gate...) and the preset or sample
+slot each white key selects. A key map overlay, shown at start
 and toggled with `/` or `?`, shades the instrument, prints each piano key's
 letter on its cap and draws a description box with an arrow to every switch
 and knob; the arrow-key note moves to whichever small knob was touched last.
@@ -114,10 +123,11 @@ the menu: with the mode switch down (`Tab`), hold the CHOMPI key (`Left
 Shift`) and press the first black key (`s`) for an octave down or the second
 (`d`) for an octave up.
 
-Command line: `--card DIR` (default `card`), `--no-audio` (run without a sound
-card), `--pair 0|1` (send the headphone or the line output to the sound card,
-default line), `--scale F`, `--screenshot FILE.bmp`, `--exit-after SECONDS`,
-`--no-keymap`.
+Command line: `--card DIR` (default `card`), `--cards DIR` (a folder of card
+folders, one per firmware), `--firmware wave|tape|tempo` (launcher), `--no-audio`
+(run without a sound card), `--pair 0|1` (send the headphone or the line output
+to the sound card, default line), `--scale F`, `--screenshot FILE.bmp`,
+`--exit-after SECONDS`, `--no-keymap`.
 
 The output of the firmware is quiet at the WAVE defaults (the final compressor
 is a menu-page setting); turn the volume knob up or use the firmware's menu, as
@@ -257,10 +267,14 @@ What is simulated, and how faithfully:
 
 ## Adding a firmware
 
-`-DCHOMPI_FIRMWARE=tape` (or `tempo`, or an absolute path to a `<firmware>/code`
-folder for a community build such as POLY) picks the sources. At configure
-time the sources are copied to `build/firmware-staged` and the patches in
-`firmware/patches/<name>/` (`custom/` for an absolute path) are applied.
+Every firmware whose sources are in the checkout is built: a patched copy of
+each goes to `build/firmware-staged-<name>` with the patches from
+`firmware/patches/<name>/` applied, and the shim and simulator core are built
+once and linked into one executable per firmware. `-DCHOMPI_FIRMWARES=wave;tape`
+restricts the set; `-DCHOMPI_FIRMWARE=/abs/path/to/<firmware>/code` builds a
+community firmware such as POLY as `custom` (patches in `firmware/patches/custom/`).
+The panel's cues come from a table in `frontends/sdl/firmware_info.cpp`; a new
+firmware gets a plain panel until it has an entry there.
 
 `scripts/make-sim-patch.py path/to/chompi_main.cpp out.patch` generates the
 entry-point patch for any CHOMPI-derived firmware: it includes the hooks

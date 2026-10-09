@@ -9,10 +9,18 @@
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
+#include <filesystem>
 #include <memory>
 #include <string>
+#include <unistd.h>
 #include "chompi_sim/sim.h"
+#include "firmware_info.h"
+#include "firmware_select.h"
 #include "panel.h"
+
+#ifndef CHOMPI_SIM_FIRMWARE
+#define CHOMPI_SIM_FIRMWARE ""
+#endif
 
 using namespace chompi_sim;
 
@@ -37,6 +45,8 @@ struct Options
     float       input_gain = 1.f;
     int         line_in    = -1;    /**< aux jack: 1 plugged, 0 not, -1 plugged while a sound is loaded */
     bool        mic        = false; /**< feed the computer's microphone */
+    std::string cards;              /**< folder of card folders, one per firmware (for switching) */
+    std::string argv0;
 };
 
 constexpr float  kDegreesPerDetent = 15.f; /**< 24 detents per turn */
@@ -61,6 +71,8 @@ void PrintUsage(const char* argv0)
                 "  --gain <float>        input sound level (default 1.0)\n"
                 "  --line-in | --mic-in  aux jack plugged or not (default: plugged while a sound is loaded)\n"
                 "  --mic                 feed the computer's microphone into the inputs\n"
+                "  --cards <dir>         folder of card folders (wave, tape, tempo or wave-1.0 ...): the firmware\n"
+                "                        tabs in the bar switch to the matching card; --firmware is accepted too\n"
                 "  --help                this text\n",
                 argv0);
 }
@@ -68,6 +80,7 @@ void PrintUsage(const char* argv0)
 /** Returns 0 to run, 1 on error, 2 when --help was printed. */
 int ParseArgs(int argc, char** argv, Options& o)
 {
+    o.argv0 = argv[0];
     for(int i = 1; i < argc; i++)
     {
         std::string a = argv[i];
@@ -110,6 +123,17 @@ int ParseArgs(int argc, char** argv, Options& o)
             o.line_in = 0;
         else if(a == "--mic")
             o.mic = true;
+        else if(a == "--cards")
+        {
+            if(!value(v))
+                return 1;
+            o.cards = v;
+        }
+        else if(a == "--firmware")
+        {
+            if(!value(v)) // the launcher picked this executable; nothing to do here
+                return 1;
+        }
         else if(a == "--card")
         {
             if(!value(v))
@@ -289,7 +313,59 @@ bool SaveScreenshot(SDL_Renderer* r, const std::string& path)
 class App
 {
   public:
-    explicit App(const Options& o) : opt_(o), pair_(o.pair) { ui_.keymap = o.keymap; }
+    explicit App(const Options& o) : opt_(o), pair_(o.pair)
+    {
+        ui_.keymap    = o.keymap;
+        ui_.firmware  = CHOMPI_SIM_FIRMWARE;
+        ui_.card_name = std::filesystem::path(o.card).filename().string();
+        exe_dir_      = ExecutableDir(o.argv0.c_str());
+        ui_.firmwares_built = AvailableFirmwares(exe_dir_, "chompi-sim-gui");
+    }
+
+    /** Reboots into another firmware: the matching executable next to this
+     *  one replaces the process, with the card for that firmware and the
+     *  same options otherwise. */
+    void SwitchFirmware(int index)
+    {
+        const gui::FirmwareInfo& f = gui::kFirmwares[index];
+        if(ui_.firmware == f.id)
+            return;
+        if(std::find(ui_.firmwares_built.begin(), ui_.firmwares_built.end(), f.id) == ui_.firmwares_built.end())
+        {
+            log_.push_back(std::string(f.name) + " is not built (no chompi-sim-gui-" + f.id + " next to this executable)");
+            return;
+        }
+        std::string card = CardForFirmware(opt_.cards, opt_.card, f.id);
+        if(DetectFirmware(card) != f.id)
+            std::fprintf(stderr, "no card folder for %s found; booting it with %s\n", f.name, card.c_str());
+        std::vector<std::string> args = {exe_dir_ + "/chompi-sim-gui-" + f.id, "--card", card, "--pair", std::to_string(pair_),
+                                         "--scale", std::to_string(opt_.scale), "--gain", std::to_string(opt_.input_gain)};
+        if(!opt_.cards.empty())
+            args.insert(args.end(), {"--cards", opt_.cards});
+        if(opt_.no_audio)
+            args.push_back("--no-audio");
+        if(!ui_.keymap)
+            args.push_back("--no-keymap");
+        if(!opt_.input.empty())
+            args.insert(args.end(), {"--input", opt_.input});
+        if(opt_.input_loop)
+            args.push_back("--loop");
+        if(opt_.mic)
+            args.push_back("--mic");
+        if(opt_.line_in == 1)
+            args.push_back("--line-in");
+        else if(opt_.line_in == 0)
+            args.push_back("--mic-in");
+        std::fprintf(stderr, "switching to %s: %s --card %s\n", f.name, args[0].c_str(), card.c_str());
+        Shutdown();
+        std::vector<char*> cargs;
+        for(std::string& a : args)
+            cargs.push_back(&a[0]);
+        cargs.push_back(nullptr);
+        execv(args[0].c_str(), cargs.data());
+        std::perror(args[0].c_str());
+        std::exit(1);
+    }
     ~App() { Shutdown(); }
 
     int Run()
@@ -365,7 +441,10 @@ class App
         SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
         int winW = int(std::lround(gui::kPanelW * opt_.scale));
         int winH = int(std::lround(gui::kPanelH * opt_.scale));
-        window_  = SDL_CreateWindow("CHOMPI simulator", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, winW, winH,
+        std::string title = "CHOMPI simulator";
+        if(gui::FirmwareByName(ui_.firmware).name[0])
+            title += std::string(" - ") + gui::FirmwareByName(ui_.firmware).name;
+        window_  = SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, winW, winH,
                                     SDL_WINDOW_SHOWN | SDL_WINDOW_ALLOW_HIGHDPI);
         if(!window_)
         {
@@ -502,6 +581,7 @@ class App
                 Touch(h.index);
                 break;
             case gui::HitKind::Toggle: Sim::Get().SetToggle(!Sim::Get().ToggleDown()); break;
+            case gui::HitKind::FirmwareTab: SwitchFirmware(h.index); break;
             case gui::HitKind::None: break;
         }
     }
@@ -799,6 +879,7 @@ class App
     SDL_Renderer*               renderer_    = nullptr;
     SDL_AudioDeviceID           audio_dev_   = 0;
     SDL_AudioDeviceID           mic_dev_     = 0;
+    std::string                 exe_dir_;
     bool                        input_loaded_ = false;
     std::string                 audio_desc_;
     float                       draw_scale_  = 1.f;

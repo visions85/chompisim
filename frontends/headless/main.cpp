@@ -243,6 +243,8 @@ int main(int argc, char** argv)
             trace = true;
         else if(a == "--burst")
             burst = std::max(1, atoi(next().c_str()));
+        else if(a == "--cards" || a == "--firmware")
+            next(); // launcher options, passed through; this executable is one firmware
         else
         {
             fprintf(stderr, "usage: chompi-sim --card DIR [--seconds N] [--wav out.wav] [--pair 0|1] [--script file] [--leds out.txt] [--ppm panel.ppm] [--midi-out out.bin] [--quiet] [--realtime [--burst N]] [--trace]\n");

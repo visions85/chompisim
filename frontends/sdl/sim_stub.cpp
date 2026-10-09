@@ -216,6 +216,60 @@ void     Sim::SetCardPresent(bool present) { (void)present; }
 uint64_t Sim::SampleClock() const { return S().samples; }
 uint32_t Sim::NowMs() const { return uint32_t(S().samples / (kSampleRate / 1000)); }
 Stats    Sim::GetStats() const { return S().stats; }
+// ---- audio inputs: the stand-in keeps the state and plays nothing ----
+namespace
+{
+struct StubInput
+{
+    std::string name;
+    bool        playing = false, loop = false, line_in = false;
+    double      length_s = 0;
+    uint64_t    started  = 0;
+};
+StubInput& I()
+{
+    static StubInput i;
+    return i;
+}
+} // namespace
+bool Sim::LoadInputFile(const std::string& path, std::string& err)
+{
+    (void)err;
+    I().name     = path.substr(path.find_last_of("/\\") + 1);
+    I().length_s = 1.0;
+    I().playing  = false;
+    return true;
+}
+void Sim::PlayInput(bool loop, float gain)
+{
+    (void)gain;
+    I().loop    = loop;
+    I().playing = !I().name.empty();
+    I().started = S().samples;
+}
+void Sim::StopInput() { I().playing = false; }
+InputState Sim::GetInputState() const
+{
+    InputState st;
+    st.name     = I().name;
+    st.loop     = I().loop;
+    st.length_s = I().length_s;
+    st.line_in  = I().line_in;
+    double pos  = double(S().samples - I().started) / kSampleRate;
+    if(I().playing && pos >= st.length_s && !I().loop)
+        I().playing = false;
+    st.playing    = I().playing;
+    st.position_s = st.playing ? std::fmod(pos, st.length_s) : 0.0;
+    return st;
+}
+void Sim::SetLineIn(bool plugged) { I().line_in = plugged; }
+bool Sim::LineIn() const { return I().line_in; }
+void Sim::PushInput(const float* mono, size_t frames)
+{
+    (void)mono;
+    (void)frames;
+}
+
 std::vector<std::string> Sim::TakeLog()
 {
     std::lock_guard<std::mutex> l(S().m);

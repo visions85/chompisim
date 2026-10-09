@@ -14,6 +14,7 @@
  *  gives anti-aliased edges and smooth glow on both the accelerated and the
  *  software SDL renderer. */
 #include "panel.h"
+#include "firmware_info.h"
 #include "font.h"
 #include <algorithm>
 #include <cmath>
@@ -36,7 +37,8 @@ namespace
 // ---------------------------------------------------------------------------
 constexpr float kMmPx      = 3.4f;   /**< logical pixels per millimetre */
 constexpr float kBoardX    = 16.f;   /**< canvas x of board x = 0 */
-constexpr float kBoardTopY = 14.f;   /**< canvas y of the board's top edge */
+constexpr float kBarH      = 26.f;   /**< the firmware bar above the instrument */
+constexpr float kBoardTopY = 14.f + kBarH; /**< canvas y of the board's top edge */
 constexpr float kBoardWmm  = 319.75f;
 constexpr float kBoardHmm  = 99.68f;
 
@@ -148,13 +150,13 @@ struct ToggleDef
 };
 constexpr ToggleDef kToggle = {18.38f, 68.46f, 16.f, 46.f, 24.f, 18.f};
 
-constexpr SDL_FRect kBody = {6, 2, 1108, 348}; /**< the instrument enclosure */
+constexpr SDL_FRect kBody = {6, 2 + kBarH, 1108, 348}; /**< the instrument enclosure */
 
 /** Text rows (logical y of the top of the text). */
-constexpr float kHintY1  = 356;
-constexpr float kHintY2  = 366;
-constexpr float kStatusY = 380;
-constexpr float kLogY    = 392;
+constexpr float kHintY1  = 356 + kBarH;
+constexpr float kHintY2  = 366 + kBarH;
+constexpr float kStatusY = 380 + kBarH;
+constexpr float kLogY    = 392 + kBarH;
 constexpr float kLogDy   = 10;
 constexpr float kTextX   = 16;
 
@@ -198,6 +200,15 @@ constexpr SDL_Color kToggleSlot  = {58, 56, 52, 255};
 constexpr SDL_Color kToggleThumb = {236, 234, 228, 255};
 constexpr SDL_Color kToggleGrip  = {150, 146, 138, 255};
 constexpr SDL_Color kHintColor   = {104, 110, 124, 255};
+constexpr SDL_Color kCue         = {118, 112, 100, 255}; /**< firmware function under a control */
+constexpr SDL_Color kCueDim      = {150, 146, 136, 255}; /**< its click pages */
+constexpr SDL_Color kMenuCue     = {70, 66, 60, 255};    /**< menu-layer function printed on a cap */
+constexpr SDL_Color kBarBg       = {18, 18, 22, 255};
+constexpr SDL_Color kBarText     = {200, 204, 214, 255};
+constexpr SDL_Color kTabText     = {214, 218, 228, 255};
+constexpr SDL_Color kTabEdge     = {92, 96, 110, 255};
+constexpr SDL_Color kTabDim      = {84, 88, 100, 255};
+constexpr SDL_Color kTabOnText   = {18, 18, 22, 255};
 constexpr SDL_Color kStatusColor = {170, 176, 188, 255};
 constexpr SDL_Color kLogColor    = {120, 170, 226, 255};
 
@@ -471,6 +482,31 @@ void DrawPianoKeys(Canvas& cv, const UiState& st)
             cv.Glow(r.x + r.w / 2, r.y + r.h / 2 + dy, r.w * 0.55f, led, 0.5f, true);
         }
     }
+    // the menu layer (mode switch down, CHOMPI held): what the keys do in it
+    if(Sim::Get().ToggleDown())
+    {
+        const FirmwareInfo& fw    = FirmwareByName(st.firmware);
+        int                 black = 0, white = 0;
+        for(int semi = 0; semi < 25; semi++)
+        {
+            const PianoKeyDef& g = kPianoGeom[semi];
+            SDL_FRect          r = PianoKeyRect(semi);
+            float              dy = Sim::Get().ButtonPressed(kPianoKeys[semi]) ? kKeyPressDy : 0.f;
+            std::string        cue;
+            if(g.upper)
+                cue = fw.menu_black[black] ? fw.menu_black[black] : "", black++;
+            else
+            {
+                white++;
+                if(white == 15)
+                    cue = fw.menu_white15 ? fw.menu_white15 : "";
+                else if(fw.menu_white)
+                    cue = std::string(fw.menu_white) + " " + std::to_string(white);
+            }
+            if(!cue.empty())
+                cv.Text(r.x + r.w / 2, r.y + 8 + dy, 1, kMenuCue, cue, 0);
+        }
+    }
 }
 
 void DrawKnob(Canvas& cv, const KnobDef& k, const UiState& st)
@@ -492,8 +528,17 @@ void DrawKnob(Canvas& cv, const KnobDef& k, const UiState& st)
     for(float t = 0.38f; t <= 0.86f; t += 0.04f)
         cv.Disc(cx + sx * t * r, cy + sy * t * r, pw, kPointer);
 
-    if(!st.keymap) // the key map names the knobs in its callouts
-        cv.Text(cx, cy + R + 6, 1, kLabel, k.label, 0);
+    // the firmware's function for the knob, and what its click pages hold
+    const FirmwareInfo& fw    = FirmwareByName(st.firmware);
+    const char* const*  pages = fw.knob[size_t(k.enc)];
+    cv.Text(cx, cy + R + 6, 1, pages[0] ? kCue : kLabel, pages[0] ? pages[0] : k.label, 0);
+    if(pages[1])
+    {
+        std::string more = std::string("push: ") + pages[1];
+        if(pages[2])
+            more += std::string(" / ") + pages[2];
+        cv.Text(cx, cy + R + 6 + kLabelH + 3, 1, kCueDim, more, 0);
+    }
 }
 
 void DrawFuncKey(Canvas& cv, const FuncKeyDef& f, const UiState& st)
@@ -504,6 +549,11 @@ void DrawFuncKey(Canvas& cv, const FuncKeyDef& f, const UiState& st)
     float     dy      = pressed ? kKeyPressDy : 0.f;
     DrawKeyCap(cv, r, kFuncFace, kFuncSide, pressed, hover);
     cv.Text(r.x + r.w / 2, r.y + r.h / 2 - 5 + dy, 1, kFuncText, f.label, 0);
+    const FirmwareInfo& fw  = FirmwareByName(st.firmware);
+    const bool          menu = Sim::Get().ToggleDown();
+    const char* cue = f.button == KEY_CHOMPI ? (menu ? "MENU (hold)" : fw.chompi) : f.button == KEY_PLAY ? fw.play : fw.loop;
+    if(cue)
+        cv.Text(r.x + r.w / 2, r.y + r.h + 4, 1, kCue, cue, 0);
 }
 
 void DrawToggle(Canvas& cv, const UiState& st)
@@ -516,8 +566,7 @@ void DrawToggle(Canvas& cv, const UiState& st)
     float ty = down ? cy + t.h / 2 - t.thumb_h - 1 : cy - t.h / 2 + 1;
     cv.RoundRect(cx - t.thumb_w / 2, ty, t.thumb_w, t.thumb_h, 5, hover ? Scaled(kToggleThumb, 1.04f) : kToggleThumb);
     cv.FillRect(cx - t.thumb_w / 2 + 6, ty + t.thumb_h / 2 - 1, t.thumb_w - 12, 2, kToggleGrip);
-    if(!st.keymap)
-        cv.Text(cx, cy + t.h / 2 + 8, 1, kLabel, "MODE", 0);
+    cv.Text(cx, cy + t.h / 2 + 8, 1, kLabel, down ? "MENU" : "MODE", 0);
 }
 
 void DrawTextArea(Canvas& cv, const UiState& st)
@@ -590,11 +639,10 @@ void DrawKeyMap(Canvas& cv, const UiState& st)
         DrawKeyChip(cv, r.x + r.w / 2, r.y + r.h - kKeyLipH - kChipH / 2 - 3 + dy, kPianoKeyNames[semi]);
     }
 
-    // Boxes sit in two free bands: above the LED row and between the knobs
-    // and the upper caps. Arrows that would cross an LED leave the box off
-    // centre and land on the knob's shoulder.
-    constexpr float kBandTop = 5.f;
-    constexpr float kBandMid = 164.f;
+    // Every box sits in the free band between the firmware bar and the LED
+    // row; an arrow that would cross the LED above a knob leaves the box off
+    // centre and lands on the knob's shoulder.
+    constexpr float kBandTop = kBarH + 5.f;
     std::vector<Callout> callouts;
     {
         const ToggleDef& t = kToggle;
@@ -605,7 +653,7 @@ void DrawKeyMap(Canvas& cv, const UiState& st)
         SDL_FRect r  = FuncKeyRect(f);
         float     cx = r.x + r.w / 2;
         float     ax = cx + (f.button == KEY_CHOMPI ? 16.f : 6.f);
-        callouts.push_back({f.label, f.key, cx + (f.button == KEY_CHOMPI ? 4.f : 0.f), kBandTop, ax, true, ax, r.y - 2});
+        callouts.push_back({f.label, f.key, cx + (f.button == KEY_CHOMPI ? -2.f : 0.f), kBandTop, ax, true, ax, r.y - 2});
     }
     for(const KnobDef& k : kKnobs)
     {
@@ -613,16 +661,53 @@ void DrawKeyMap(Canvas& cv, const UiState& st)
         std::string keys = k.ccw_key ? std::string(k.ccw_key) + " " + k.cw_key + " turn  " + k.push_key + " push"
                                      : std::string(k.push_key) + " push";
         if(!k.ccw_key && st.arrow_knob == k.enc)
-            keys += "  < > turn";
-        if(k.enc == ENC_SW4 || k.enc == ENC_SW2 || k.enc == ENC_SW6)
-            callouts.push_back({k.label, keys, cx, kBandMid, cx, false, cx, cy + R + 2});
-        else if(k.big)
+            keys += " < > turn";
+        if(k.big)
             callouts.push_back({k.label, keys, cx, kBandTop, cx, true, cx, cy - R - 2});
         else
-            callouts.push_back({k.label, keys, cx, kBandTop, cx + 28.f, true, cx + R * 0.5f + 1, cy - R * 0.866f - 1});
+            callouts.push_back({k.label, keys, cx + (k.enc == ENC_SW4 ? 4.f : 0.f), kBandTop, cx + 28.f, true, cx + R * 0.5f + 1, cy - R * 0.866f - 1});
     }
     for(const Callout& c : callouts)
         DrawCallout(cv, c);
+}
+
+// ---------------------------------------------------------------------------
+// Firmware bar: which firmware runs, tabs to switch, the card folder
+// ---------------------------------------------------------------------------
+constexpr float kTabX = 86.f, kTabW = 50.f, kTabH = 18.f, kTabGap = 6.f, kTabY = (kBarH - kTabH) / 2;
+
+SDL_FRect TabRect(int i)
+{
+    return SDL_FRect{kTabX + i * (kTabW + kTabGap), kTabY, kTabW, kTabH};
+}
+
+void DrawBar(Canvas& cv, const UiState& st)
+{
+    cv.FillRect(0, 0, float(kPanelW), kBarH, kBarBg);
+    cv.Text(kTextX, kTabY + 5, 1, kHintColor, "FIRMWARE");
+    const int n = int(sizeof(kFirmwares) / sizeof(kFirmwares[0]));
+    for(int i = 0; i < n; i++)
+    {
+        const FirmwareInfo& f     = kFirmwares[i];
+        SDL_FRect           r     = TabRect(i);
+        bool                on    = st.firmware == f.id;
+        bool                built = std::find(st.firmwares_built.begin(), st.firmwares_built.end(), f.id) != st.firmwares_built.end();
+        bool                hover = st.hover == Hit{HitKind::FirmwareTab, i};
+        if(on)
+            cv.RoundRect(r.x, r.y, r.w, r.h, 4.f, f.accent);
+        else
+        {
+            cv.RoundRect(r.x, r.y, r.w, r.h, 4.f, hover && built ? f.accent : kTabEdge);
+            cv.RoundRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 3.f, kBarBg);
+        }
+        cv.Text(r.x + r.w / 2, r.y + 5, 1, on ? kTabOnText : built ? kTabText : kTabDim, f.name, 0);
+    }
+    const FirmwareInfo& cur = FirmwareByName(st.firmware);
+    std::string         line = cur.name[0] ? std::string(cur.name) + " " + cur.version + "   " + cur.tagline
+                                           : (st.firmware.empty() ? "" : st.firmware + " build");
+    cv.Text(TabRect(n - 1).x + kTabW + 14, kTabY + 5, 1, kBarText, line);
+    if(!st.card_name.empty())
+        cv.Text(float(kPanelW) - 16, kTabY + 5, 1, kHintColor, "card: " + st.card_name, 1);
 }
 
 } // namespace
@@ -649,11 +734,19 @@ void Panel::Draw(const UiState& st)
     DrawToggle(cv, st);
     if(st.keymap)
         DrawKeyMap(cv, st);
+    DrawBar(cv, st);
     DrawTextArea(cv, st);
 }
 
 Hit Panel::HitTest(float x, float y) const
 {
+    if(y < kBarH)
+    {
+        for(int i = 0; i < int(sizeof(kFirmwares) / sizeof(kFirmwares[0])); i++)
+            if(Contains(TabRect(i), x, y))
+                return Hit{HitKind::FirmwareTab, i};
+        return Hit{};
+    }
     for(int semi = 0; semi < 25; semi++)
         if(Contains(PianoKeyRect(semi), x, y))
             return Hit{HitKind::PianoKey, semi};
