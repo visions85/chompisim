@@ -59,7 +59,28 @@ sub1(r'(void ZeroSDRAM\(\)\n\{\n)(.*?)(\n\})',
 sub1(r'^int main\(void\)\n\{', '#ifdef CHOMPI_SIM\nint chompi_firmware_main(void) /* run on the simulator\'s firmware thread */\n#else\nint main(void)\n#endif\n{',
      "main rename", flags=re.M)
 
-# 6. the main loop
+# 6. variables initialised with the SDRAM base address (TEMPO's sample_ram_start):
+#    on the host they point at the simulator's SDRAM stand-in instead
+lines = s.split("\n")
+out = []
+redirected = 0
+in_zero = False
+for ln in lines:
+    if ln.startswith("void ZeroSDRAM()"):
+        in_zero = True
+    elif in_zero and ln.startswith("}"):
+        in_zero = False
+    if (not in_zero) and re.search(r'\(\s*void\s*\*\s*\)\s*0x[cC]0000000\b', ln) and "=" in ln:
+        host = re.sub(r'\(\s*void\s*\*\s*\)\s*0x[cC]0000000\b', 'chompi_sim_sdram() /* host stand-in for the SDRAM bank */', ln)
+        out += ["#ifdef CHOMPI_SIM", host, "#else", ln, "#endif"]
+        redirected += 1
+    else:
+        out.append(ln)
+s = "\n".join(out)
+if redirected:
+    log.append(f"SDRAM base redirected ({redirected})")
+
+# 7. the main loop
 sub1(r'^(\s*)while ?\((1|true)\)\n(\s*)\{\n(\s*)MainLoop\(nullptr\);\n(\s*)\}\n\}',
      r'#ifdef CHOMPI_SIM\n\1while (chompi_sim_running())\n#else\n\1while (1)\n#endif\n\3{\n\4MainLoop(nullptr);\n\5}\n#ifdef CHOMPI_SIM\n\1return 0;\n#endif\n}',
      "main loop", flags=re.M)

@@ -5,10 +5,8 @@
 #include "daisy_seed.h"
 #include "encoder.h"
 #include "ff.h"
-#include <chrono>
 #include <cstdio>
 #include <cstring>
-#include <thread>
 
 using namespace daisy;
 using namespace chompi_sim;
@@ -26,13 +24,22 @@ static int fails = 0;
         }                                                     \
     } while(0)
 
-static void SleepMs(int ms) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); }
+/** Advance the device clock by rendering audio blocks: in lockstep mode the
+ *  firmware sees System::GetNow() move with the sample clock, so the test is
+ *  deterministic and independent of host load. */
+static void AdvanceMs(int ms)
+{
+    float  buf[kNumOutputs][kBlockSize];
+    float* outp[kNumOutputs] = {buf[0], buf[1], buf[2], buf[3]};
+    for(int i = 0; i < ms * kSampleRate / 1000 / kBlockSize; i++)
+        Sim::Get().RenderBlock(nullptr, outp);
+}
 
 int main(int argc, char** argv)
 {
     Config cfg;
     cfg.card_dir = argc > 1 ? argv[1] : "card";
-    cfg.realtime = true; // wall clock, no firmware thread
+    cfg.realtime = false; // sample-clock time, no firmware thread: deterministic
     cfg.verbose  = false;
     if(!Sim::Get().Init(cfg))
         return 1;
@@ -88,7 +95,7 @@ int main(int argc, char** argv)
     for(int i = 0; i < 20; i++)
     {
         sr.Update();
-        SleepMs(2);
+        AdvanceMs(2);
     }
     int pressed = 0;
     for(int i = 0; i < NUM_BUTTONS; i++)
@@ -99,7 +106,7 @@ int main(int argc, char** argv)
     for(int i = 0; i < 20; i++)
     {
         sr.Update();
-        SleepMs(2);
+        AdvanceMs(2);
     }
     CHECK(sr.State(KEY_1), "KEY_1 not seen pressed");
     CHECK(sr.State(SW_TOG), "toggle not seen down");
@@ -108,7 +115,7 @@ int main(int argc, char** argv)
     for(int i = 0; i < 20; i++)
     {
         sr.Update();
-        SleepMs(2);
+        AdvanceMs(2);
     }
     CHECK(!sr.State(KEY_1), "KEY_1 stuck");
 
@@ -130,12 +137,10 @@ int main(int argc, char** argv)
     Sim::Get().TurnEncoder(3, -2);
     Sim::Get().TurnEncoder(4, 5);
     Sim::Get().TurnEncoder(5, -4);
-    // the encoder phases advance inside RenderBlock; pump blocks like a sound card would
-    float  buf[kNumOutputs][kBlockSize];
-    float* outp[kNumOutputs] = {buf[0], buf[1], buf[2], buf[3]};
+    // the encoder phases advance inside RenderBlock; sample them every millisecond
     for(int i = 0; i < 400; i++)
     {
-        Sim::Get().RenderBlock(nullptr, outp);
+        AdvanceMs(1);
         esr.Update();
         for(int e = 0; e < 4; e++)
             enc[e].Debounce(esr.RawState(e * 2), esr.RawState(e * 2 + 1));
@@ -143,7 +148,6 @@ int main(int argc, char** argv)
         enc[5].Debounce();
         for(int e = 0; e < 6; e++)
             counts[e] += enc[e].Increment();
-        SleepMs(1);
     }
     printf("encoder counts: %d %d %d %d %d %d\n", counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]);
     CHECK(counts[0] == 3 && counts[1] == 0 && counts[3] == -2 && counts[4] == 5 && counts[5] == -4, "encoder counts wrong");
@@ -153,7 +157,7 @@ int main(int argc, char** argv)
     for(int i = 0; i < 12; i++)
     {
         enc[4].Debounce();
-        SleepMs(2);
+        AdvanceMs(2);
     }
     CHECK(enc[4].Pressed(), "SW5 push not seen");
     Sim::Get().SetEncoderPressed(4, false);

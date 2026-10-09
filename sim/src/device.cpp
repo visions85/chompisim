@@ -463,26 +463,38 @@ void Device::RenderStereo(float* interleaved, size_t frames, int pair)
 // ---------------------------------------------------------------------------
 // Lifecycle
 // ---------------------------------------------------------------------------
-/** The Daisy Seed's 64 MB SDRAM lives at 0xC0000000. Firmware that addresses
- *  it directly (TEMPO's sample manager does) needs memory there, so map an
- *  anonymous, zero-filled region at that address. On macOS this needs the
- *  executable linked with -Wl,-pagezero_size,0x10000 (done by CMake). */
+/** The Daisy Seed's 64 MB SDRAM lives at 0xC0000000. The simulator provides a
+ *  zero-filled block of that size and hands it to patched firmware through
+ *  chompi_sim_sdram(). As a courtesy to code that might still hard-code the
+ *  address, it first tries to place the block at 0xC0000000; that works on
+ *  Linux but not on macOS, where the low 4 GB are reserved and the executable
+ *  cannot change that for arm64. Either way the block is usable. */
 bool Device::MapSdram()
 {
+    const size_t len = size_t(64) << 20;
     void*        want = reinterpret_cast<void*>(uintptr_t(0xC0000000u));
-    const size_t len  = size_t(64) << 20;
     int          flags = MAP_PRIVATE | MAP_ANONYMOUS;
 #ifdef MAP_FIXED_NOREPLACE
     flags |= MAP_FIXED_NOREPLACE;
 #endif
-    void* got = mmap(want, len, PROT_READ | PROT_WRITE, flags, -1, 0);
-    if(got == MAP_FAILED)
-        return false;
-    if(got != want)
+    void* got = MAP_FAILED;
+    if(!getenv("CHOMPI_SIM_NO_FIXED_SDRAM")) // set it to exercise the macOS path on Linux
+        got = mmap(want, len, PROT_READ | PROT_WRITE, flags, -1, 0);
+    if(got != MAP_FAILED && got != want)
     {
         munmap(got, len);
-        return false;
+        got = MAP_FAILED;
     }
+    if(got == MAP_FAILED)
+    {
+        // anywhere will do: calloc gives lazily committed zero pages
+        got = calloc(len, 1);
+        if(!got)
+            return false;
+        sdram_at_hw_address = false;
+    }
+    else
+        sdram_at_hw_address = true;
     sdram = got;
     return true;
 }
@@ -498,7 +510,12 @@ bool Device::Init(const Config& c)
     SetCardRoot(cfg.card_dir);
     wall_epoch = std::chrono::steady_clock::now();
     if(!sdram && !MapSdram())
-        fprintf(stderr, "[sim] warning: could not map 64 MB at 0xC0000000; firmware that addresses SDRAM directly will crash\n");
+    {
+        fprintf(stderr, "[sim] could not allocate the 64 MB SDRAM stand-in\n");
+        return false;
+    }
+    if(cfg.verbose && !sdram_at_hw_address)
+        fprintf(stderr, "[sim] SDRAM stand-in is not at 0xC0000000 (normal on macOS); patched firmware uses chompi_sim_sdram()\n");
 
     // ---- button chain: 5 x CD4021 on D8 (clk) / D7 (latch) / D9 (data) ----
     button_chain.nbits = NUM_BUTTONS;
@@ -740,4 +757,11 @@ const char* ButtonName(int button)
 } // namespace chompi_sim
 
 // ---- hooks used by the patched firmware ----
-bool chompi_sim_running() { return chompi_sim::dev::Device::Get().fw_should_run; }
+bool  chompi_sim_running() { return chompi_sim::dev::Device::Get().fw_should_run; }
+void* chompi_sim_sdram()
+{
+    chompi_sim::dev::Device& d = chompi_sim::dev::Device::Get();
+    if(!d.sdram)
+        d.MapSdram();
+    return d.sdram;
+}

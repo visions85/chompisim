@@ -101,12 +101,6 @@ if(NOT CHOMPI_SIM_STUB)
     "-Wno-unused-variable;-Wno-unused-but-set-variable;-Wno-format;-Wno-sign-compare;-Wno-unused-function;-Wno-missing-field-initializers;-Wno-attributes;-Wno-unknown-attributes;-Wno-pedantic;-Wno-reorder;-Wno-unused-value;-Wno-parentheses;-Wno-misleading-indentation;-Wno-narrowing;-Wno-write-strings")
   target_compile_options(chompi_sim PRIVATE -fno-strict-aliasing "SHELL:-include ${CMAKE_SOURCE_DIR}/host/compat/chompi_sim_prelude.h")
 
-  # On macOS the low 4 GB of the address space is reserved (__PAGEZERO); shrink
-  # it so the simulator can map the Daisy's SDRAM window at 0xC0000000.
-  if(APPLE)
-    target_link_options(chompi_sim INTERFACE "-Wl,-pagezero_size,0x10000")
-  endif()
-
   # ---- headless runner ----
   add_executable(chompi-sim frontends/headless/main.cpp)
   target_link_libraries(chompi-sim PRIVATE chompi_sim)

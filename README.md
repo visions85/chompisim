@@ -64,14 +64,14 @@ wave, then the normal page. Keys do nothing until the rainbow has finished.
 ### macOS notes
 
 The build is the same on macOS (Intel or Apple Silicon); CMake finds
-Homebrew's SDL2 on its own. Two things are macOS specific:
+Homebrew's SDL2 on its own. Audio goes through SDL's CoreAudio backend;
+nothing is recorded, so macOS will not ask for microphone access.
 
-- Executables are linked with `-Wl,-pagezero_size,0x10000` so the simulator
-  can map the Daisy's SDRAM window at `0xC0000000` (macOS normally reserves the
-  low 4 GB of the address space). Only firmware that addresses SDRAM directly,
-  such as TEMPO, needs this; WAVE and TAPE work without the mapping.
-- Audio goes through SDL's CoreAudio backend; nothing is recorded, so macOS
-  will not ask for microphone access.
+The Daisy's SDRAM bank is not mapped at its hardware address on macOS (the
+low 4 GB of a process are reserved there, and arm64 executables cannot change
+that). Firmware that keeps the bank's base address in a variable, as TEMPO
+does, is patched to take the simulator's 64 MB stand-in block instead, so all
+three firmwares run the same on both systems.
 
 ## The window
 
@@ -223,10 +223,10 @@ Two more things came up with the factory firmwares and may apply to forks:
 - TEMPO indexes its arpeggiator note lists while they are empty (reads address
   0, which the MCU tolerates and a desktop does not).
   `firmware/patches/tempo/arp_empty_notes.patch` reserves storage up front and
-  reorders one condition. Firmware that addresses SDRAM by absolute address,
-  as TEMPO's sample manager does, works because the simulator maps 64 MB at
-  `0xC0000000` (on macOS this needs the `-pagezero_size` link option CMake
-  adds).
+  reorders one condition. TEMPO's sample manager addresses SDRAM through a
+  base-address variable initialised to `0xC0000000`; the entry-point patch
+  points it at the simulator's 64 MB stand-in block (`chompi_sim_sdram()`),
+  which on Linux usually sits at that very address and on macOS cannot.
 
 If a firmware uses a libDaisy class the shim does not have yet, add it under
 `host/libdaisy-sim` mirroring the real header; the shim already covers

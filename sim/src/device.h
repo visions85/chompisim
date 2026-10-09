@@ -114,7 +114,8 @@ class Device
 
     // ---- lifecycle ----
     bool  MapSdram();
-    void* sdram = nullptr; /**< 64 MB mapped at 0xC0000000, see MapSdram() */
+    void* sdram = nullptr; /**< 64 MB SDRAM stand-in, see MapSdram() */
+    bool  sdram_at_hw_address = false;
     bool  Init(const Config& cfg);
     void Start();
     void Stop();
