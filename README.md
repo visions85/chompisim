@@ -17,7 +17,7 @@ Status: all three factory firmwares boot from their factory cards and play.
 |---|---|---|---|---|
 | WAVE 1.0 | yes | yes | yes | presets and options are saved to the card folder; MIDI in works |
 | TAPE 2.0 | yes | yes | yes | samples stream from the card folder (168-file factory card) |
-| TEMPO 1.0 | yes | yes | yes | arpeggiator transport and MIDI clock out work; needs the two small patches in `firmware/patches/tempo` |
+| TEMPO 1.0 | yes | yes | yes | arpeggiator transport and MIDI clock out work; needs the three small patches in `firmware/patches/tempo` |
 
 Both run modes (realtime and deterministic lockstep) produce the same output.
 
@@ -296,7 +296,10 @@ Two more things came up with the factory firmwares and may apply to forks:
   reorders one condition. TEMPO's sample manager addresses SDRAM through a
   base-address variable initialised to `0xC0000000`; the entry-point patch
   points it at the simulator's 64 MB stand-in block (`chompi_sim_sdram()`),
-  which on Linux usually sits at that very address and on macOS cannot.
+  which on Linux usually sits at that very address and on macOS cannot. Its
+  sample manager and slice engine do arithmetic on `void*`, a GCC extension
+  that clang rejects; `firmware/patches/tempo/void_pointer_arithmetic.patch`
+  spells the same byte arithmetic out with `char*` casts.
 
 If a firmware uses a libDaisy class the shim does not have yet, add it under
 `host/libdaisy-sim` mirroring the real header; the shim already covers

@@ -1,0 +1,56 @@
+GCC accepts arithmetic on void pointers (one byte per step); clang, Apple's
+included, rejects it. The same byte arithmetic, spelled out, builds on both.
+
+--- a/SampleManager.h
++++ b/SampleManager.h
+@@ -13,10 +13,10 @@
+ 
+     void Init(void *start_addr, FileStreamingManager *fm, float sr) {
+ 
+-        sdram_start_addr_ = start_addr + 7680000; // Skip first ~4MB (960,000 floats) We need to skip over where delay is
++        sdram_start_addr_ = static_cast<char*>(start_addr) + 7680000; // Skip first ~4MB (960,000 floats) We need to skip over where delay is
+ 
+         sdram_buff_ptr_ = sdram_start_addr_;
+-        sdram_buff_end_ = sdram_buff_ptr_ + 1920000; // 10 seconds of stereo 2 byte int16 samples
++        sdram_buff_end_ = static_cast<char*>(sdram_buff_ptr_) + 1920000; // 10 seconds of stereo 2 byte int16 samples
+ 
+         sdram_write_ptr_ = sdram_buff_end_; //Preset samples go at the end of buffer
+ 
+@@ -115,7 +115,7 @@
+                 file_manager_->request_fifo.PushBack(readReq);
+ 
+                 loadedSamples[0][i].start = sdram_write_ptr_;
+-                sdram_write_ptr_ += 1920000;
++                sdram_write_ptr_ = static_cast<char*>(sdram_write_ptr_) + 1920000;
+             }
+         }
+ 
+@@ -133,7 +133,7 @@
+                 file_manager_->request_fifo.PushBack(readReq);
+ 
+                 loadedSamples[1][i].start = sdram_write_ptr_;
+-                sdram_write_ptr_ += 1920000;
++                sdram_write_ptr_ = static_cast<char*>(sdram_write_ptr_) + 1920000;
+             }
+         }
+ 
+@@ -335,7 +335,7 @@
+     }
+ 
+     void copyRamToRam(size_t src, size_t dst, size_t engine) {
+-        sdram_write_ptr_ = sdram_buff_end_ + 1920000 * (dst - 1);
++        sdram_write_ptr_ = static_cast<char*>(sdram_buff_end_) + 1920000 * (dst - 1);
+         if (src == 15) {
+             memcpy(sdram_write_ptr_, loadedSamples[0][14].start, loadedSamples[0][14].numSamples * sizeof(int16_t) * 2);
+         }
+--- a/SliceEngine.h
++++ b/SliceEngine.h
+@@ -575,7 +575,7 @@
+         size_t slice_size_ = cur_sample_size_ / kMaxSlices;
+ 
+         for (size_t i = 0; i < kMaxSlices; ++i) {
+-            mySlices[i].start = sample_start_ + (window_start_ + i * slice_size_) * 4;
++            mySlices[i].start = static_cast<char*>(sample_start_) + (window_start_ + i * slice_size_) * 4;
+             mySlices[i].numSamples = slice_size_;
+         }
+         for (size_t i = 0; i < NUM_VOICES; ++i) {
