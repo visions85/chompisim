@@ -202,6 +202,8 @@ class Sim
     /** Hands the firmware frames from a host microphone (mono, 48 kHz); the
      *  following blocks mix them into the inputs. */
     void PushInput(const float* mono, size_t frames);
+    /** Peak level that entered the inputs since the last call (0..1), for a meter. */
+    float TakeInputPeak();
 
     // ---- misc ----
     uint64_t SampleClock() const; /**< samples rendered so far */

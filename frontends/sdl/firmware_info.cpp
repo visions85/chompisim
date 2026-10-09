@@ -7,7 +7,7 @@ namespace gui
 {
 
 const FirmwareInfo kFirmwares[3] = {
-    {"wave", "WAVE", "1.0", "8-voice wavetable synth with a 32-step sequencer", {72, 128, 232, 255},
+    {"wave", "WAVE", "1.0", "wavetable synth + sequencer", {72, 128, 232, 255},
      {{"ATTACK", "PITCH LFO", nullptr},   // A
       {"RELEASE", "FILTER LFO", nullptr}, // B
       {"DELAY FB", "FILTER", nullptr},    // C
@@ -17,7 +17,7 @@ const FirmwareInfo kFirmwares[3] = {
      "MUTE / REST", "SEQ PLAY", "SEQ LOOP",
      {"OCT -", "OCT +", "GATE 10%", "GATE 50%", "GATE 100%", "PITCH LFO", "FILT LFO", "ERASE", "COPY", "SAVE"},
      "PRESET", "DEFAULT"},
-    {"tape", "TAPE", "2.0", "7-voice sampler and varispeed tape looper", {236, 122, 52, 255},
+    {"tape", "TAPE", "2.0", "sampler + tape looper", {236, 122, 52, 255},
      {{"START", "ATTACK", nullptr},
       {"END", "DECAY", nullptr},
       {"VERB+DELAY", "SATURATE", "FILTER"},
@@ -27,7 +27,7 @@ const FirmwareInfo kFirmwares[3] = {
      "RECORD", "LOOPER", "LOOPER REC",
      {"JAMMI BANK", "CUBBI BANK", "MIC IN", "AUX IN", "RESAMPLE", "FX PRE", "FX POST", "ERASE", "COPY", "SAVE"},
      "SLOT", "CHOMPI"},
-    {"tempo", "TEMPO", "1.0", "dual-engine pattern generator: chromatic and slices", {76, 188, 118, 255},
+    {"tempo", "TEMPO", "1.0", "pattern generator, two engines", {76, 188, 118, 255},
      {{"START", "ATTACK", nullptr},
       {"END", "RELEASE", nullptr},
       {"GRAIN", "GRAIN MIX", nullptr},

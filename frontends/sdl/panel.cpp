@@ -18,6 +18,7 @@
 #include "font.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <vector>
 
@@ -163,12 +164,12 @@ constexpr float kTextX   = 16;
 const char* const kHint1 = "/ or ? = key map   PIANO  z s x d c v g b h n j m = lower octave   q 2 w 3 e r 5 t 6 y 7 u i = upper   "
                            "SPACE play   RETURN loop   L-SHIFT chompi (hold)   TAB mode   ESC quit";
 const char* const kHint2 = "KNOBS  drag or scroll = turn   click = push   right-click = hold   [ ] transport   - = volume   "
-                           "LEFT/RIGHT last small knob   F1-F6 push   F7/F8 play/stop input sound";
+                           "LEFT/RIGHT last small knob   F1-F6 push   F7/F8 input play/stop  F9 mic  F10 load";
 /** Hint lines while the key map overlay is up. */
 const char* const kMapHint1 = "KEY MAP   the letters on the caps play the notes (two octaves)   LEFT/RIGHT arrows turn the small knob "
                               "touched last   / or ? hides this map";
 const char* const kMapHint2 = "MOUSE   click or hold any key   drag up/down or scroll on a knob = turn   click a knob = push   "
-                              "right-click = hold   F7/F8 play/stop the input sound   ESC quit";
+                              "right-click = hold   F7/F8 input play/stop  F9 mic  F10 load a sound   ESC quit";
 
 // ---------------------------------------------------------------------------
 // Colours: a cream enclosure with white caps, like the instrument. No artwork
@@ -681,6 +682,29 @@ SDL_FRect TabRect(int i)
     return SDL_FRect{kTabX + i * (kTabW + kTabGap), kTabY, kTabW, kTabH};
 }
 
+/** The INPUT section of the bar: four buttons, a meter and the sound's name. */
+constexpr float kInputX = 560.f, kMeterX = 812.f, kMeterW = 60.f;
+constexpr float kInputButtonX[4] = {598.f, 648.f, 698.f, 742.f};
+constexpr float kInputButtonW[4] = {44.f, 44.f, 38.f, 62.f};
+
+SDL_FRect InputButtonRect(int i)
+{
+    return SDL_FRect{kInputButtonX[i], kTabY, kInputButtonW[i], kTabH};
+}
+
+/** A bar button: filled with the accent when on, outlined otherwise, dim when it cannot be used. */
+void DrawBarButton(Canvas& cv, const SDL_FRect& r, const char* label, bool on, bool enabled, bool hover, SDL_Color accent)
+{
+    if(on)
+        cv.RoundRect(r.x, r.y, r.w, r.h, 4.f, accent);
+    else
+    {
+        cv.RoundRect(r.x, r.y, r.w, r.h, 4.f, hover && enabled ? accent : kTabEdge);
+        cv.RoundRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 3.f, kBarBg);
+    }
+    cv.Text(r.x + r.w / 2, r.y + 5, 1, on ? kTabOnText : enabled ? kTabText : kTabDim, label, 0);
+}
+
 void DrawBar(Canvas& cv, const UiState& st)
 {
     cv.FillRect(0, 0, float(kPanelW), kBarH, kBarBg);
@@ -689,23 +713,36 @@ void DrawBar(Canvas& cv, const UiState& st)
     for(int i = 0; i < n; i++)
     {
         const FirmwareInfo& f     = kFirmwares[i];
-        SDL_FRect           r     = TabRect(i);
-        bool                on    = st.firmware == f.id;
         bool                built = std::find(st.firmwares_built.begin(), st.firmwares_built.end(), f.id) != st.firmwares_built.end();
-        bool                hover = st.hover == Hit{HitKind::FirmwareTab, i};
-        if(on)
-            cv.RoundRect(r.x, r.y, r.w, r.h, 4.f, f.accent);
-        else
-        {
-            cv.RoundRect(r.x, r.y, r.w, r.h, 4.f, hover && built ? f.accent : kTabEdge);
-            cv.RoundRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 3.f, kBarBg);
-        }
-        cv.Text(r.x + r.w / 2, r.y + 5, 1, on ? kTabOnText : built ? kTabText : kTabDim, f.name, 0);
+        DrawBarButton(cv, TabRect(i), f.name, st.firmware == f.id, built, st.hover == Hit{HitKind::FirmwareTab, i}, f.accent);
     }
     const FirmwareInfo& cur = FirmwareByName(st.firmware);
-    std::string         line = cur.name[0] ? std::string(cur.name) + " " + cur.version + "   " + cur.tagline
+    std::string         line = cur.name[0] ? std::string(cur.name) + " " + cur.version + "  " + cur.tagline
                                            : (st.firmware.empty() ? "" : st.firmware + " build");
     cv.Text(TabRect(n - 1).x + kTabW + 14, kTabY + 5, 1, kBarText, line);
+
+    // the inputs: a sound file, the computer's microphone, the aux jack, and a level meter
+    const SDL_Color accent = cur.name[0] ? cur.accent : SDL_Color{118, 122, 138, 255};
+    cv.Text(kInputX, kTabY + 5, 1, kHintColor, "INPUT");
+    const bool  loaded    = !st.input.name.empty();
+    const char* labels[4] = {"LOAD", st.input.playing ? "STOP" : "PLAY", "MIC", st.input.line_in ? "JACK: AUX" : "JACK: MIC"};
+    const bool  on[4]     = {false, st.input.playing, st.mic_open, st.input.line_in};
+    const bool  enabled[4] = {true, loaded, true, true};
+    for(int i = 0; i < 4; i++)
+        DrawBarButton(cv, InputButtonRect(i), labels[i], on[i], enabled[i], st.hover == Hit{HitKind::InputButton, i}, accent);
+    cv.RoundRect(kMeterX, kTabY + 4, kMeterW, kTabH - 8, 3.f, kTabEdge);
+    cv.RoundRect(kMeterX + 1, kTabY + 5, kMeterW - 2, kTabH - 10, 2.f, kBarBg);
+    const float lvl = std::clamp(st.input_level, 0.f, 1.f);
+    if(lvl > 0.f)
+        cv.RoundRect(kMeterX + 2, kTabY + 6, (kMeterW - 4) * lvl, kTabH - 12, 2.f,
+                     lvl > 0.95f ? SDL_Color{236, 72, 60, 255} : SDL_Color{96, 206, 120, 255});
+    if(loaded)
+    {
+        std::string name = st.input.name.size() > 14 ? st.input.name.substr(0, 12) + ".." : st.input.name;
+        char        t[48];
+        std::snprintf(t, sizeof t, " %.1f/%.1fs", st.input.position_s, st.input.length_s);
+        cv.Text(kMeterX + kMeterW + 8, kTabY + 5, 1, kBarText, name + t);
+    }
     if(!st.card_name.empty())
         cv.Text(float(kPanelW) - 16, kTabY + 5, 1, kHintColor, "card: " + st.card_name, 1);
 }
@@ -745,6 +782,9 @@ Hit Panel::HitTest(float x, float y) const
         for(int i = 0; i < int(sizeof(kFirmwares) / sizeof(kFirmwares[0])); i++)
             if(Contains(TabRect(i), x, y))
                 return Hit{HitKind::FirmwareTab, i};
+        for(int i = 0; i < 4; i++)
+            if(Contains(InputButtonRect(i), x, y))
+                return Hit{HitKind::InputButton, i};
         return Hit{};
     }
     for(int semi = 0; semi < 25; semi++)

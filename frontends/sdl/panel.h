@@ -32,6 +32,7 @@ enum class HitKind
     Knob,     /**< index = chompi_sim::Encoder */
     Toggle,   /**< the mode switch */
     FirmwareTab, /**< index into gui::kFirmwares, in the bar above the instrument */
+    InputButton, /**< in the bar: 0 load a sound, 1 play/stop, 2 microphone, 3 aux jack */
 };
 
 struct Hit
@@ -52,6 +53,9 @@ struct UiState
     std::string                                  firmware;        /**< id of the firmware running ("wave"); see firmware_info.h */
     std::vector<std::string>                     firmwares_built; /**< ids the bar can switch to */
     std::string                                  card_name;       /**< card folder, shown in the bar */
+    chompi_sim::InputState                       input;           /**< the sound fed to the inputs */
+    bool                                         mic_open = false; /**< the computer's microphone feeds the inputs */
+    float                                        input_level = 0.f; /**< meter, 0..1 */
     Hit                                          hover;         /**< control under the mouse */
     std::string                                  status;        /**< status line */
     std::vector<std::string>                     log;           /**< last firmware log lines, oldest first */

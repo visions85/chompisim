@@ -183,20 +183,28 @@ jack, from the aux input. The simulator feeds those inputs from a sound file,
 or from the computer's microphone, so you can sample into the simulated
 instrument the way you would into the real one.
 
-- `chompi-sim-gui --input sound.wav` loads a WAV (PCM or float, any rate,
-  mono or stereo; it is resampled to 48 kHz). `F7` plays it into the inputs
-  from the start, `F8` stops it; `--loop` and `--gain` adjust it. Dropping a
-  WAV onto the window loads and plays it too.
+- The INPUT section of the bar has it all: `LOAD` opens a file dialog (the
+  system one on macOS, zenity or kdialog on Linux) and plays the chosen WAV
+  into the inputs, `PLAY` / `STOP` replay or stop it, `MIC` switches the
+  computer's microphone (the default recording device) on and off, `JACK`
+  flips the aux jack, and the meter shows what reaches the inputs. The keys
+  are `F10` load, `F7` play, `F8` stop, `F9` microphone. Dropping a WAV onto
+  the window loads and plays it too.
+- From the command line, `--input sound.wav` loads a sound at start (PCM or
+  float, any rate, mono or stereo; it is resampled to 48 kHz), `--loop` and
+  `--gain` adjust it, `--mic` opens the microphone.
 - A loaded sound plugs the aux jack, so the firmware takes it in stereo
   through its line-in path; `--mic-in` leaves the jack empty and the sound
   arrives as a mono microphone signal instead (`--line-in` forces the jack).
-- `--mic` feeds the computer's microphone (the default recording device)
-  into the inputs as well.
+- macOS asks for microphone access the first time, for the terminal the
+  simulator was started from; if the meter stays flat with `MIC` on, allow it
+  under System Settings, Privacy & Security, Microphone.
 - The status line shows the loaded sound, its play position and the jack.
 
 In TAPE, with the mode switch up, the CHOMPI key records while it is held
-(or latches, if that option is on): press it, press `F7`, release it, and the
-keys play the new sample from the chompi slot. The save is in the menu: mode
+(or latches, if that option is on): hold it, press `PLAY` in the bar (or
+`F7`), or speak with `MIC` on, release it, and the keys play the new sample
+from the chompi slot. The save is in the menu: mode
 switch down, hold CHOMPI, press the top black key (`7`) for SAVE, release
 CHOMPI, press the white key of the slot, press CHOMPI; the card folder gets
 `jammi_a<slot>.wav`. `examples/record-tape.txt` scripts exactly that with

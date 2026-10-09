@@ -4,6 +4,7 @@
  */
 #include "device.h"
 #include "wav.h"
+#include <cmath>
 #include <memory>
 #include "chompi_sim_hooks.h"
 #include "daisy_seed.h"
@@ -470,6 +471,11 @@ void Device::MixInputs(float (*in)[kBlockSize])
         in[2][i] += m;
         in[3][i] += m;
     }
+    float pk = 0.f;
+    for(int i = 0; i < kBlockSize; i++)
+        pk = std::max({pk, std::fabs(in[0][i]), std::fabs(in[2][i]), std::fabs(in[3][i])});
+    if(pk > in_peak.load())
+        in_peak.store(pk);
 }
 
 void Device::RenderStereo(float* interleaved, size_t frames, int pair)
@@ -774,6 +780,8 @@ void Sim::PushInput(const float* mono, size_t frames)
             d.live_count++; // else the oldest frame is overwritten
     }
 }
+
+float Sim::TakeInputPeak() { return Device::Get().in_peak.exchange(0.f); }
 
 void Sim::SetButton(int button, bool pressed)
 {

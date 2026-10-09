@@ -199,6 +199,7 @@ class Device
     float                      in_gain    = 1.f;
     std::vector<float>         live_ring = std::vector<float>(kSampleRate / 2); /**< host microphone frames */
     size_t                     live_w = 0, live_count = 0;
+    std::atomic<float>         in_peak{0.f}; /**< peak since the meter last read it */
     void                       MixInputs(float (*in)[kBlockSize]);
 
     // ---- LEDs ----

@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <sys/wait.h>
 #include <unistd.h>
 #include "chompi_sim/sim.h"
 #include "firmware_info.h"
@@ -294,6 +295,48 @@ void CaptureCallback(void*, Uint8* stream, int len)
     Sim::Get().PushInput(reinterpret_cast<const float*>(stream), size_t(len) / sizeof(float));
 }
 
+/** A native "choose a file" dialog: AppleScript on macOS, zenity or kdialog
+ *  elsewhere. Returns the path, or "" with `why` set when the dialog was
+ *  cancelled or none is available. The event loop waits meanwhile; audio and
+ *  the firmware keep running on their own threads. */
+std::string PickSoundFile(std::string& why)
+{
+    const char* const cmds[] = {
+#ifdef __APPLE__
+        "osascript -e 'tell application \"System Events\"' -e 'activate' "
+        "-e 'set f to choose file with prompt \"Sound to play into the inputs\" of type {\"public.audio\"}' "
+        "-e 'POSIX path of f' -e 'end tell' 2>/dev/null",
+#else
+        "zenity --file-selection --title='Sound to play into the inputs' --file-filter='Sounds | *.wav *.WAV' 2>/dev/null",
+        "kdialog --getopenfilename . 'Sounds (*.wav *.WAV)' 2>/dev/null",
+#endif
+    };
+    for(const char* cmd : cmds)
+    {
+        FILE* p = popen(cmd, "r");
+        if(!p)
+            continue;
+        std::string out;
+        char        buf[4096];
+        while(std::fgets(buf, sizeof buf, p))
+            out += buf;
+        const int rc     = pclose(p);
+        const int status = WIFEXITED(rc) ? WEXITSTATUS(rc) : 255;
+        while(!out.empty() && (out.back() == '\n' || out.back() == '\r'))
+            out.pop_back();
+        if(status == 0 && !out.empty())
+            return out;
+        if(status <= 1) // the dialog ran and was dismissed
+        {
+            why = "cancelled";
+            return "";
+        }
+        // 127: no such program, try the next one
+    }
+    why = "no file dialog available (zenity or kdialog); drop a WAV onto the window or start with --input";
+    return "";
+}
+
 bool SaveScreenshot(SDL_Renderer* r, const std::string& path)
 {
     int w = 0, h = 0;
@@ -411,9 +454,16 @@ class App
         Sim::Get().SetLineIn(opt_.line_in >= 0 ? opt_.line_in != 0 : input_loaded_);
     }
 
-    /** Opens the computer's microphone (--mic) and feeds it to the simulated inputs. */
+    /** Opens the computer's microphone (--mic, F9, the MIC button) and feeds it to the simulated inputs. */
     void OpenMic()
     {
+        if(mic_dev_ != 0)
+            return;
+        if(!SDL_WasInit(SDL_INIT_AUDIO) && SDL_InitSubSystem(SDL_INIT_AUDIO) != 0)
+        {
+            log_.push_back(std::string("microphone: ") + SDL_GetError());
+            return;
+        }
         SDL_AudioSpec want{}, have{};
         want.freq     = kAudioRate;
         want.format   = AUDIO_F32SYS;
@@ -423,11 +473,77 @@ class App
         mic_dev_      = SDL_OpenAudioDevice(nullptr, 1, &want, &have, 0);
         if(mic_dev_ == 0)
         {
+            log_.push_back(std::string("microphone not available: ") + SDL_GetError());
             std::fprintf(stderr, "microphone not available: %s\n", SDL_GetError());
             return;
         }
         SDL_PauseAudioDevice(mic_dev_, 0);
+        log_.push_back("microphone open; if the meter stays flat, allow microphone access for the terminal");
         std::fprintf(stderr, "microphone open, %d Hz\n", have.freq);
+    }
+
+    void CloseMic()
+    {
+        if(mic_dev_ == 0)
+            return;
+        SDL_CloseAudioDevice(mic_dev_);
+        mic_dev_ = 0;
+        log_.push_back("microphone closed");
+    }
+
+    void ToggleMic()
+    {
+        if(mic_dev_ != 0)
+            CloseMic();
+        else
+            OpenMic();
+    }
+
+    /** The LOAD button and F10: a file dialog, then the sound plays into the inputs. */
+    void LoadSoundDialog()
+    {
+        std::string why, path = PickSoundFile(why);
+        if(path.empty())
+        {
+            if(why != "cancelled")
+                log_.push_back(why);
+            return;
+        }
+        LoadSound(path);
+    }
+
+    /** Loads a sound into the inputs and plays it (drag-and-drop, the dialog). */
+    void LoadSound(const std::string& path)
+    {
+        std::string err;
+        if(!Sim::Get().LoadInputFile(path, err))
+        {
+            log_.push_back(err);
+            return;
+        }
+        input_loaded_ = true;
+        if(opt_.line_in < 0)
+            Sim::Get().SetLineIn(true);
+        Sim::Get().PlayInput(opt_.input_loop, opt_.input_gain);
+        log_.push_back("input: " + Sim::Get().GetInputState().name);
+    }
+
+    /** The INPUT buttons in the bar. */
+    void InputButton(int which)
+    {
+        switch(which)
+        {
+            case 0: LoadSoundDialog(); break;
+            case 1:
+                if(Sim::Get().GetInputState().playing)
+                    Sim::Get().StopInput();
+                else
+                    Sim::Get().PlayInput(opt_.input_loop, opt_.input_gain);
+                break;
+            case 2: ToggleMic(); break;
+            case 3: Sim::Get().SetLineIn(!Sim::Get().LineIn()); break;
+            default: break;
+        }
     }
 
     bool InitVideo()
@@ -582,6 +698,7 @@ class App
                 break;
             case gui::HitKind::Toggle: Sim::Get().SetToggle(!Sim::Get().ToggleDown()); break;
             case gui::HitKind::FirmwareTab: SwitchFirmware(h.index); break;
+            case gui::HitKind::InputButton: InputButton(h.index); break;
             case gui::HitKind::None: break;
         }
     }
@@ -671,6 +788,10 @@ class App
             Sim::Get().StopInput();
             Debug("input stop");
         }
+        else if(k == SDLK_F9 && down)
+            ToggleMic();
+        else if(k == SDLK_F10 && down)
+            LoadSoundDialog();
         else if(k >= SDLK_F1 && k <= SDLK_F6)
         {
             int e2 = int(k - SDLK_F1); // F1..F6 = ENC_SW1..ENC_SW6
@@ -690,17 +811,7 @@ class App
             {
                 std::string path = e.drop.file ? e.drop.file : "";
                 SDL_free(e.drop.file);
-                std::string err;
-                if(Sim::Get().LoadInputFile(path, err))
-                {
-                    input_loaded_ = true;
-                    if(opt_.line_in < 0)
-                        Sim::Get().SetLineIn(true);
-                    Sim::Get().PlayInput(opt_.input_loop, opt_.input_gain);
-                    log_.push_back("input: " + Sim::Get().GetInputState().name);
-                }
-                else
-                    log_.push_back(err);
+                LoadSound(path);
                 break;
             }
             case SDL_QUIT: running_ = false; break;
@@ -799,6 +910,10 @@ class App
         for(int i = 0; i < kNumEncoders; i++)
             ui_.knob_pressed[size_t(i)] = input_.EncoderPressed(i);
         ui_.arrow_knob = last_small_knob_;
+        ui_.input      = Sim::Get().GetInputState();
+        ui_.mic_open   = mic_dev_ != 0;
+        input_level_   = std::max(Sim::Get().TakeInputPeak(), input_level_ * 0.9f);
+        ui_.input_level = input_level_;
 
         Stats st = Sim::Get().GetStats();
         char  buf[256];
@@ -881,6 +996,7 @@ class App
     SDL_AudioDeviceID           mic_dev_     = 0;
     std::string                 exe_dir_;
     bool                        input_loaded_ = false;
+    float                       input_level_  = 0.f;
     std::string                 audio_desc_;
     float                       draw_scale_  = 1.f;
     float                       mouse_scale_ = 1.f;

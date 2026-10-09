@@ -269,6 +269,7 @@ void Sim::PushInput(const float* mono, size_t frames)
     (void)mono;
     (void)frames;
 }
+float Sim::TakeInputPeak() { return 0.f; }
 
 std::vector<std::string> Sim::TakeLog()
 {
