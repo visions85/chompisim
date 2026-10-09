@@ -3,6 +3,7 @@
  *  folder. Names resolve case-insensitively like FAT; directory listings are
  *  returned sorted so runs are reproducible.
  */
+#define CHOMPI_FF_NO_DIR_ALIAS 1 /* keep FatFs's DIR out of this file: <filesystem> may bring in <dirent.h> */
 #include "ff.h"
 #include "diskio.h"
 #include "sys/fatfs.h"
@@ -302,7 +303,7 @@ extern "C"
         return FR_OK;
     }
 
-    FRESULT f_opendir(DIR* dp, const TCHAR* path)
+    FRESULT f_opendir(FF_DIR* dp, const TCHAR* path)
     {
         std::lock_guard<std::mutex> l(g_m);
         if(!dp)
@@ -323,12 +324,12 @@ extern "C"
             entries->push_back(d);
         }
         std::sort(entries->begin(), entries->end(), [](const DirEntry& a, const DirEntry& b) { return Lower(a.name) < Lower(b.name); });
-        std::memset(dp, 0, sizeof(DIR));
+        std::memset(dp, 0, sizeof(FF_DIR));
         dp->sim_entries = entries;
         return FR_OK;
     }
 
-    FRESULT f_readdir(DIR* dp, FILINFO* fno)
+    FRESULT f_readdir(FF_DIR* dp, FILINFO* fno)
     {
         std::lock_guard<std::mutex> l(g_m);
         if(!dp || !dp->sim_entries)
@@ -349,7 +350,7 @@ extern "C"
         return FR_OK;
     }
 
-    FRESULT f_closedir(DIR* dp)
+    FRESULT f_closedir(FF_DIR* dp)
     {
         std::lock_guard<std::mutex> l(g_m);
         if(!dp || !dp->sim_entries)

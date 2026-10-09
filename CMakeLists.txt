@@ -15,6 +15,13 @@ set(CHOMPI_REPO_DIR "${CMAKE_SOURCE_DIR}/third_party/CHOMPI" CACHE PATH "Checkou
 
 find_package(Threads REQUIRED)
 
+# The firmware and the libDaisy headers copied into the shim carry GCC-only
+# attributes such as __attribute__((optimize("-O0"))); clang (including Apple
+# clang) only needs to ignore them.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wno-unknown-attributes -Wno-unknown-warning-option -Wno-c++20-extensions -Wno-c++20-designator)
+endif()
+
 # ---------------------------------------------------------------------------
 # Resolve the firmware folder: <code>/src holds the firmware, <code>/libs the
 # vendored libDaisy / DaisySP / coreJSON that CHOMPI Club modified.

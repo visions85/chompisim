@@ -10,7 +10,7 @@ rm -rf "$OUT/build"
 applied=0
 shopt -s nullglob
 for p in "$PATCHES"/*.patch; do
-  if patch -p1 -d "$OUT" --forward --silent < "$p"; then
+  if patch -p1 -N -s -d "$OUT" < "$p"; then
     echo "applied $(basename "$p")"; applied=$((applied+1))
   else
     echo "WARNING: $(basename "$p") did not apply cleanly (firmware newer than the patch?)" >&2

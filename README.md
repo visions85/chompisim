@@ -24,8 +24,17 @@ Both run modes (realtime and deterministic lockstep) produce the same output.
 ## Quick start
 
 Requirements: CMake 3.16+, a C++17 compiler (GCC 10+ or clang 12+), git, and
-SDL2 development headers for the GUI (`brew install sdl2` on macOS,
-`apt install libsdl2-dev` on Debian/Ubuntu). The headless runner needs no SDL.
+SDL2 development headers for the GUI. The headless runner needs no SDL.
+
+```sh
+# macOS: Xcode command line tools, then Homebrew
+xcode-select --install
+brew install cmake sdl2
+# Debian / Ubuntu
+sudo apt install git cmake g++ libsdl2-dev
+# Fedora
+sudo dnf install git cmake gcc-c++ SDL2-devel
+```
 
 ```sh
 scripts/fetch-firmware.sh wave        # sparse clone of CHOMPI-Club/CHOMPI into third_party/
@@ -51,6 +60,18 @@ cp -R third_party/CHOMPI/firmware/card-profiles/tape-2.0 card-tape
 
 Boot takes about seven seconds, like the hardware: boot animation, the rainbow
 wave, then the normal page. Keys do nothing until the rainbow has finished.
+
+### macOS notes
+
+The build is the same on macOS (Intel or Apple Silicon); CMake finds
+Homebrew's SDL2 on its own. Two things are macOS specific:
+
+- Executables are linked with `-Wl,-pagezero_size,0x10000` so the simulator
+  can map the Daisy's SDRAM window at `0xC0000000` (macOS normally reserves the
+  low 4 GB of the address space). Only firmware that addresses SDRAM directly,
+  such as TEMPO, needs this; WAVE and TAPE work without the mapping.
+- Audio goes through SDL's CoreAudio backend; nothing is recorded, so macOS
+  will not ask for microphone access.
 
 ## The window
 

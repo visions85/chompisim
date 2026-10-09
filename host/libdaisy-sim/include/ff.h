@@ -47,14 +47,20 @@ typedef struct {
     void*   sim_name; /* simulator: std::string* with the host path */
 } FIL;
 
-/* Directory object */
+/* Directory object. FatFs calls it DIR, which collides with the POSIX DIR of
+   <dirent.h> on hosts whose C++ library includes it (libc++ on macOS). The
+   object is FF_DIR here and DIR is an alias for firmware code; the
+   implementation file defines CHOMPI_FF_NO_DIR_ALIAS and uses FF_DIR. */
 typedef struct {
     _FDID obj;
     DWORD dptr;
     DWORD clust;
     DWORD sect;
     void* sim_entries; /* simulator: std::vector<...>* */
-} DIR;
+} FF_DIR;
+#ifndef CHOMPI_FF_NO_DIR_ALIAS
+typedef FF_DIR DIR;
+#endif
 
 /* File information */
 typedef struct {
@@ -80,9 +86,9 @@ FRESULT f_write(FIL* fp, const void* buff, UINT btw, UINT* bw);
 FRESULT f_lseek(FIL* fp, FSIZE_t ofs);
 FRESULT f_truncate(FIL* fp);
 FRESULT f_sync(FIL* fp);
-FRESULT f_opendir(DIR* dp, const TCHAR* path);
-FRESULT f_closedir(DIR* dp);
-FRESULT f_readdir(DIR* dp, FILINFO* fno);
+FRESULT f_opendir(FF_DIR* dp, const TCHAR* path);
+FRESULT f_closedir(FF_DIR* dp);
+FRESULT f_readdir(FF_DIR* dp, FILINFO* fno);
 FRESULT f_mkdir(const TCHAR* path);
 FRESULT f_unlink(const TCHAR* path);
 FRESULT f_rename(const TCHAR* path_old, const TCHAR* path_new);
