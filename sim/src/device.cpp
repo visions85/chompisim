@@ -92,20 +92,21 @@ void Device::WritePin(int port, int pin, bool v)
 // ---------------------------------------------------------------------------
 // Time
 // ---------------------------------------------------------------------------
+// System::GetNow() is derived from the audio sample clock in both modes. A
+// sound card asks for audio in bursts (a 256-frame buffer is eleven 24-sample
+// blocks rendered back to back); with wall-clock time the firmware's 1 kHz
+// debouncers would sample once per burst and the encoder model could only
+// advance one phase per burst, which made knobs lag behind the mouse. On the
+// sample clock every block is half a millisecond, exactly as on the hardware,
+// and the clock still tracks real time because the sound card consumes it.
 uint32_t Device::NowMs() const
 {
-    if(Lockstep())
-        return uint32_t(samples.load() / (kSampleRate / 1000));
-    auto d = std::chrono::steady_clock::now() - wall_epoch;
-    return uint32_t(std::chrono::duration_cast<std::chrono::milliseconds>(d).count());
+    return uint32_t(samples.load() / (kSampleRate / 1000));
 }
 
 uint32_t Device::NowUs() const
 {
-    if(Lockstep())
-        return uint32_t(samples.load() * 1000 / (kSampleRate / 1000));
-    auto d = std::chrono::steady_clock::now() - wall_epoch;
-    return uint32_t(std::chrono::duration_cast<std::chrono::microseconds>(d).count());
+    return uint32_t(samples.load() * 1000 / (kSampleRate / 1000));
 }
 
 void Device::FwWaitTurn()
@@ -508,7 +509,6 @@ bool Device::Init(const Config& c)
         return false;
     }
     SetCardRoot(cfg.card_dir);
-    wall_epoch = std::chrono::steady_clock::now();
     if(!sdram && !MapSdram())
     {
         fprintf(stderr, "[sim] could not allocate the 64 MB SDRAM stand-in\n");

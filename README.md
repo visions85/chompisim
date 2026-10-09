@@ -100,6 +100,15 @@ Each key cap is lit by the LED under it. No artwork or logos are reproduced.
 | Push encoders SW1 to SW6 | F1 to F6 |
 | Quit | Escape |
 
+The knobs do what the firmware makes them do. In WAVE the PITCH knob is a fine
+tune: 0.003 of its range per detent, roughly 14 detents per semitone, one
+octave each way over the whole range, and it retunes notes that are already
+sounding. A click on it switches that knob to wavetable cycling (its LED
+changes colour) and a second click brings pitch back. Octave shifts live in
+the menu: with the mode switch down (`Tab`), hold the CHOMPI key (`Left
+Shift`) and press the first black key (`s`) for an octave down or the second
+(`d`) for an octave up.
+
 Command line: `--card DIR` (default `card`), `--no-audio` (run without a sound
 card), `--pair 0|1` (send the headphone or the line output to the sound card,
 default line), `--scale F`, `--screenshot FILE.bmp`, `--exit-after SECONDS`.
@@ -130,13 +139,16 @@ writes a WAV file, LED snapshots and a picture of the panel.
 
 ```
 chompi-sim --card DIR [--seconds N] [--script FILE] [--wav FILE] [--pair 0|1]
-           [--leds FILE] [--ppm FILE] [--midi-out FILE] [--quiet] [--realtime] [--trace]
+           [--leds FILE] [--ppm FILE] [--midi-out FILE] [--quiet] [--realtime [--burst N]] [--trace]
 ```
 
 `--trace` prints a line whenever the LED state or the MIDI output changes, with
 the time; it is the quickest way to see what a firmware does in response to a
 script. `--realtime` runs the same script at wall-clock pace in the
-free-running thread mode the GUI uses.
+free-running thread mode the GUI uses, and `--burst N` renders N blocks back to
+back before sleeping, the way a sound card buffer does (a 256-frame buffer is
+eleven blocks). That is how to reproduce a timing problem seen in the GUI from
+a script.
 
 `scripts/smoke-test.sh` builds everything, runs the device self-test, boots the
 WAVE factory card, plays a note from the keybed and one over MIDI and checks
@@ -179,10 +191,14 @@ What is simulated, and how faithfully:
 - **Audio.** Two codecs, four channels each way, 24-sample blocks at 48 kHz,
   exactly the hardware layout (0/1 headphones, 2/3 line out; inputs 0 mic, 2/3
   aux). The sound card gets one stereo pair; inputs are silent for now.
-- **Time.** Realtime mode uses the wall clock and lets the firmware's main loop
-  run freely, as it does on the MCU. Lockstep mode drives time from the sample
-  clock and hands a baton between the audio thread and the firmware thread at
-  every delay call, so a scripted run is reproducible bit for bit.
+- **Time.** `System::GetNow()` follows the audio sample clock in both modes.
+  The firmware polls its keys and encoders from the audio callback, and a sound
+  card renders blocks in bursts, so a wall clock would let several encoder
+  phases slip past one debouncer sample and knobs would lag or skip steps.
+  Realtime mode lets the firmware's main loop run freely, as it does on the
+  MCU, with its delays sleeping on the wall clock. Lockstep mode hands a baton
+  between the audio thread and the firmware thread at every delay call, so a
+  scripted run is reproducible bit for bit.
 - **Timers.** TIM4 (SD card servicing) and TIM16 (MIDI clock, retuned on the
   fly by the firmware's clock manager) fire from the scheduler at
   240 MHz / ((PSC+1)(ARR+1)), as on the STM32H750.

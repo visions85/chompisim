@@ -127,7 +127,6 @@ class Device
 
     // ---- time ----
     std::atomic<uint64_t> samples{0};
-    std::chrono::steady_clock::time_point wall_epoch;
     uint32_t NowMs() const;
     uint32_t NowUs() const;
     bool     Lockstep() const { return !cfg.realtime; }

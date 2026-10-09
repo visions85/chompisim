@@ -213,6 +213,7 @@ int main(int argc, char** argv)
     bool        quiet    = false;
     bool        realtime = false;
     bool        trace    = false;
+    int         burst    = 1; /**< realtime: blocks rendered back to back, like a sound card buffer */
     for(int i = 1; i < argc; i++)
     {
         std::string a = argv[i];
@@ -239,9 +240,11 @@ int main(int argc, char** argv)
             realtime = true;
         else if(a == "--trace")
             trace = true;
+        else if(a == "--burst")
+            burst = std::max(1, atoi(next().c_str()));
         else
         {
-            fprintf(stderr, "usage: chompi-sim --card DIR [--seconds N] [--wav out.wav] [--pair 0|1] [--script file] [--leds out.txt] [--ppm panel.ppm] [--midi-out out.bin] [--quiet] [--realtime] [--trace]\n");
+            fprintf(stderr, "usage: chompi-sim --card DIR [--seconds N] [--wav out.wav] [--pair 0|1] [--script file] [--leds out.txt] [--ppm panel.ppm] [--midi-out out.bin] [--quiet] [--realtime [--burst N]] [--trace]\n");
             return 2;
         }
     }
@@ -398,7 +401,7 @@ int main(int argc, char** argv)
     for(uint64_t blk = 0; blk < total_blocks; blk++)
     {
         double t = double(blk * kBlockSize) / kSampleRate;
-        if(realtime)
+        if(realtime && (blk % uint64_t(burst)) == 0)
             std::this_thread::sleep_until(wall_start + std::chrono::microseconds(int64_t(t * 1e6)));
         while(next_event < events.size() && events[next_event].t <= t)
             events[next_event++].fn();

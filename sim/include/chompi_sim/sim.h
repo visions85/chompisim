@@ -15,8 +15,10 @@
  *
  *  Time
  *  ----
- *  - realtime == true : System::GetNow() is wall-clock; the firmware thread runs
- *    freely. Use this for interactive front-ends driven by a sound card.
+ *  - realtime == true : the firmware thread runs freely and its delays sleep on
+ *    the wall clock; System::GetNow() follows the audio sample clock, which a
+ *    sound card keeps in step with real time. Use this for interactive
+ *    front-ends.
  *  - realtime == false: time is the audio sample clock and the firmware thread is
  *    run in lockstep with RenderBlock(). Fully deterministic, runs as fast as the
  *    host can render. Use this for scripted / headless runs and tests.
