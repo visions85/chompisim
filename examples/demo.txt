@@ -1,0 +1,16 @@
+# WAVE factory card: boot takes ~7 s (boot animation + rainbow), then a short phrase
+7.6  note 12 0.45
+8.1  note 16 0.45
+8.6  note 19 0.45
+9.1  note 24 0.9
+10.2 note 12 1.6
+10.2 note 16 1.6
+10.2 note 19 1.6
+12.0 enc 0 12          # knob A (attack) up
+12.1 enc 1 20          # knob B up
+12.4 note 7 1.4
+12.4 note 14 1.4
+12.4 note 19 1.4
+14.2 enc 3 -8          # pitch knob down
+14.4 note 12 1.2
+14.4 note 19 1.2

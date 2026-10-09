@@ -1,0 +1,64 @@
+--- a/chompi_main.cpp
++++ b/chompi_main.cpp
+@@ -9,8 +9,15 @@
+ #include "RamBuffer.h"
+ #include "InterpolatedDelayLine.h"
+ #include "OptionsManager.h"
++#ifdef CHOMPI_SIM
++#include "chompi_sim_hooks.h"
++#endif
+ 
++#ifdef CHOMPI_SIM
++#define DSY_DTCMRAM_BSS /* host build: ordinary memory */
++#else
+ #define DSY_DTCMRAM_BSS __attribute__((section(".dtcmram_bss")))
++#endif
+ 
+ using namespace daisy;
+ using namespace chompi;
+@@ -104,11 +111,13 @@
+ 
+ void ZeroSDRAM()
+ {
++#ifndef CHOMPI_SIM /* host globals are zero-initialised; there is no SDRAM bank */
+     uint32_t *beg, *end;
+     size_t    size_in_words = (1024 * 1024 * 64) / sizeof(uint32_t);
+     beg                     = (uint32_t*)0xc0000000;
+     end                     = (uint32_t*)(beg + size_in_words);
+     std::fill(beg, end, 0);
++#endif
+ }
+ 
+ bool no_sd_card = false;
+@@ -309,7 +318,11 @@
+     System::DelayUs(10);
+ }
+ 
++#ifdef CHOMPI_SIM
++int chompi_firmware_main(void) /* run on the simulator's firmware thread */
++#else
+ int main(void)
++#endif
+ {
+     hw.Init();
+     // System::Delay(100);
+@@ -404,9 +417,18 @@
+     
+     copier.Init(hw.seed.AudioSampleRate(), &engine, &chompi_buff, &loop_buff);
+     engine.FillDefaultSample(hw.seed.AudioSampleRate());
++#ifdef CHOMPI_SIM
++
++    while (chompi_sim_running())
++#else
+ 
+     while (1)
++#endif
+     {
+         MainLoop(nullptr);
+     }
++#ifdef CHOMPI_SIM
++
++    return 0;
++#endif
+ }
+\ No newline at end of file

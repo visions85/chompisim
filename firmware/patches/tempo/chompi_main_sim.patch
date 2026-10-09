@@ -1,0 +1,78 @@
+--- a/chompi_main.cpp
++++ b/chompi_main.cpp
+@@ -16,6 +16,9 @@
+ #include "granularDelay.h"
+ #include "StateSaver.h"
+ #include "reverb.h"
++#ifdef CHOMPI_SIM
++#include "chompi_sim_hooks.h"
++#endif
+ 
+ #define MAX_CYCLES 256
+ #define MAX_SAMPLES_PER_CYCLE 2048
+@@ -27,8 +30,8 @@
+ Hardware hw;
+ UserInterface ui;
+ 
+-float __attribute__((section(".sdram_bss"))) granularBuffer[kBufferSize * 2]; // *2 for stereo so 10 sec stereo
+-float __attribute__((section(".sdram_bss"))) frozenBuffer[kBufferSize * 2]; // *2 for stereo so 10 sec stereo
++float DSY_SDRAM_BSS granularBuffer[kBufferSize * 2]; // *2 for stereo so 10 sec stereo
++float DSY_SDRAM_BSS frozenBuffer[kBufferSize * 2]; // *2 for stereo so 10 sec stereo
+ 
+ SdmmcHandler sdmmc;
+ FatFSInterface fsi;
+@@ -45,7 +48,7 @@
+ granularDelay delay;
+ StateSaver stateSaver;
+ BaseEngine* engines[2] = { &sEngine, &slice };
+-Reverb __attribute__((section(".dtcmram_bss"))) reverb;
++Reverb DTCM_MEM_SECTION reverb;
+ TimerHandle midi_clock_timer;
+ 
+ size_t tim_base_freq;
+@@ -204,11 +207,13 @@
+ 
+ void ZeroSDRAM()
+ {
++#ifndef CHOMPI_SIM /* host globals are zero-initialised; there is no SDRAM bank */
+     uint32_t *beg, *end;
+     size_t    size_in_words = (1024 * 1024 * 64) / sizeof(uint32_t);
+     beg                     = (uint32_t*)0xc0000000;
+     end                     = (uint32_t*)(beg + size_in_words);
+     std::fill(beg, end, 0);
++#endif
+ }
+ 
+ bool no_sd_card = false;
+@@ -357,7 +362,11 @@
+     System::DelayUs(10);
+ }
+ 
++#ifdef CHOMPI_SIM
++int chompi_firmware_main(void) /* run on the simulator's firmware thread */
++#else
+ int main(void)
++#endif
+ {
+     hw.Init();
+     // System::Delay(100);
+@@ -464,9 +473,18 @@
+     hw.MpWrite(0x0a, 0B00100100); // AutoDPDM
+     daisy::System::Delay(1); // Wait a sec
+     hw.usb_sw.Write(true);     // take USB control
++#ifdef CHOMPI_SIM
++
++    while (chompi_sim_running())
++#else
+ 
+     while (1)
++#endif
+     {
+         MainLoop(nullptr);
+     }
++#ifdef CHOMPI_SIM
++
++    return 0;
++#endif
+ }
+\ No newline at end of file

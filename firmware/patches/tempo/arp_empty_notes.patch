@@ -1,0 +1,30 @@
+--- a/ArpeggiatorSequencer.h
++++ b/ArpeggiatorSequencer.h
+@@ -78,6 +78,15 @@
+         midi_out_channel_[0] = options->midi_ch_out_chroma;
+         midi_out_channel_[1] = options->midi_ch_out_slice;
+         transport_out_ = options->transport_type == 0 || options->transport_type == 1;
++
++        // Several code paths index notes[i][curIdx[i]] while the list is empty.
++        // On the MCU that reads address 0 and is harmless; on a desktop host it
++        // is a null dereference. Reserving storage up front keeps the data
++        // pointer valid for the lifetime of the object (and avoids allocating
++        // from the audio path when keys are added).
++        for (size_t i = 0; i < kNumEngines; ++i) {
++            notes[i].reserve(256);
++        }
+     }
+ 
+     void checkAndPop() { //This is going to send extra STOPs but I think its ok
+@@ -447,7 +456,10 @@
+     }
+ 
+     bool checkNotePlaying(float req_nn_) {
+-        if (req_nn_ == notes[engine_type_][curIdx[engine_type_]].transpose_nn_ && play_[engine_type_] && notes[engine_type_].size()) {
++        // Check that the note list is not empty BEFORE indexing it (the original
++        // order dereferenced an empty std::vector).
++        if (notes[engine_type_].size() && play_[engine_type_]
++            && req_nn_ == notes[engine_type_][curIdx[engine_type_]].transpose_nn_) {
+             return true;
+         }
+         return false;
