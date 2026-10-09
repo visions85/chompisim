@@ -3,6 +3,8 @@
  *  audio, MIDI, charger, time and the lockstep scheduler.
  */
 #include "device.h"
+#include "wav.h"
+#include <memory>
 #include "chompi_sim_hooks.h"
 #include "daisy_seed.h"
 #include "fatfs_host.h"
@@ -401,10 +403,17 @@ void Device::Log(const char* text, bool newline)
 void Device::RenderBlock(const float* const* in, float* const* out)
 {
     auto t0 = std::chrono::steady_clock::now();
-    static thread_local float zeros[kNumInputs][kBlockSize] = {};
-    const float* inp[kNumInputs];
+    static thread_local float inbuf[kNumInputs][kBlockSize];
+    const float*              inp[kNumInputs];
     for(int c = 0; c < kNumInputs; c++)
-        inp[c] = in ? in[c] : zeros[c];
+    {
+        if(in)
+            std::copy(in[c], in[c] + kBlockSize, inbuf[c]);
+        else
+            std::fill(inbuf[c], inbuf[c] + kBlockSize, 0.f);
+        inp[c] = inbuf[c];
+    }
+    MixInputs(inbuf);
 
     {
         std::unique_lock<std::recursive_mutex> irq(irq_mutex, std::defer_lock);
@@ -427,6 +436,40 @@ void Device::RenderBlock(const float* const* in, float* const* out)
     double us = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count();
     if(us > stats.max_block_us)
         stats.max_block_us = us;
+}
+
+// The input clip goes to the microphone (mono mix) and to both aux channels;
+// the firmware listens to one or the other depending on the jack. Host
+// microphone frames are drained as they arrive.
+void Device::MixInputs(float (*in)[kBlockSize])
+{
+    std::lock_guard<std::mutex> l(in_m);
+    if(in_playing && in_clip)
+    {
+        const InputClip& c = *in_clip;
+        for(int i = 0; i < kBlockSize && in_playing; i++)
+        {
+            const float sl = c.l[in_pos] * in_gain, sr = c.r[in_pos] * in_gain;
+            in[0][i] += 0.5f * (sl + sr);
+            in[2][i] += sl;
+            in[3][i] += sr;
+            if(++in_pos >= c.l.size())
+            {
+                in_pos = 0;
+                if(!in_loop)
+                    in_playing = false;
+            }
+        }
+    }
+    for(int i = 0; i < kBlockSize && live_count > 0; i++)
+    {
+        const size_t rd = (live_w + live_ring.size() - live_count) % live_ring.size();
+        const float  m  = live_ring[rd];
+        live_count--;
+        in[0][i] += m;
+        in[2][i] += m;
+        in[3][i] += m;
+    }
 }
 
 void Device::RenderStereo(float* interleaved, size_t frames, int pair)
@@ -656,6 +699,80 @@ void Sim::StopNullAudio()
     d.null_run = false;
     if(d.null_thread.joinable())
         d.null_thread.join();
+}
+
+bool Sim::LoadInputFile(const std::string& path, std::string& err)
+{
+    WavClip w;
+    if(!LoadWav(path, w, err))
+        return false;
+    ResampleWav(w, kSampleRate);
+    auto clip  = std::make_shared<Device::InputClip>();
+    clip->name = std::filesystem::path(path).filename().string();
+    clip->l    = std::move(w.left);
+    clip->r    = std::move(w.right);
+    Device&                     d = Device::Get();
+    std::lock_guard<std::mutex> l(d.in_m);
+    d.in_clip    = clip;
+    d.in_pos     = 0;
+    d.in_playing = false;
+    return true;
+}
+void Sim::PlayInput(bool loop, float gain)
+{
+    Device&                     d = Device::Get();
+    std::lock_guard<std::mutex> l(d.in_m);
+    if(!d.in_clip || d.in_clip->l.empty())
+        return;
+    d.in_pos     = 0;
+    d.in_loop    = loop;
+    d.in_gain    = gain;
+    d.in_playing = true;
+}
+void Sim::StopInput()
+{
+    Device&                     d = Device::Get();
+    std::lock_guard<std::mutex> l(d.in_m);
+    d.in_playing = false;
+}
+InputState Sim::GetInputState() const
+{
+    Device&                     d = Device::Get();
+    std::lock_guard<std::mutex> l(d.in_m);
+    InputState                  s;
+    if(d.in_clip)
+    {
+        s.name       = d.in_clip->name;
+        s.length_s   = double(d.in_clip->l.size()) / kSampleRate;
+        s.position_s = double(d.in_pos) / kSampleRate;
+    }
+    s.playing = d.in_playing;
+    s.loop    = d.in_loop;
+    s.line_in = LineIn();
+    return s;
+}
+void Sim::SetLineIn(bool plugged)
+{
+    using daisy::seed::D21;
+    Device::Get().pins[D21.port][D21.pin].level = plugged; // high = a cable in the aux jack
+}
+bool Sim::LineIn() const
+{
+    using daisy::seed::D21;
+    return Device::Get().pins[D21.port][D21.pin].level.load();
+}
+void Sim::PushInput(const float* mono, size_t frames)
+{
+    Device&                     d = Device::Get();
+    std::lock_guard<std::mutex> l(d.in_m);
+    const size_t                cap = d.live_ring.size();
+    for(size_t i = 0; i < frames; i++)
+    {
+        d.live_ring[d.live_w] = mono[i];
+        d.live_w              = (d.live_w + 1) % cap;
+        if(d.live_count < cap)
+            d.live_count++; // else the oldest frame is overwritten
+    }
 }
 
 void Sim::SetButton(int button, bool pressed)

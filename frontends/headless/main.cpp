@@ -19,6 +19,7 @@
  *    9.0 battery low|ok       battery state reported by the charger
  */
 #include "chompi_sim/sim.h"
+#include <filesystem>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -366,6 +367,46 @@ int main(int argc, char** argv)
                     events.push_back({t, [on] { Sim::Get().SetUsbPower(on); }});
                 else
                     events.push_back({t, [on] { Sim::Get().SetBatteryLow(!on); }});
+            }
+            else if(cmd == "input")
+            {
+                // input FILE [loop] [gain]: play a WAV into the mic and aux inputs; "input stop" stops it
+                std::string file;
+                ss >> file;
+                if(file == "stop")
+                    events.push_back({t, [] { Sim::Get().StopInput(); }});
+                else
+                {
+                    if(!std::filesystem::is_regular_file(file))
+                    {
+                        fprintf(stderr, "script line %d: input file %s not found\n", lineno, file.c_str());
+                        return 1;
+                    }
+                    bool        loop = false;
+                    float       gain = 1.f;
+                    std::string tok;
+                    while(ss >> tok)
+                    {
+                        if(tok == "loop")
+                            loop = true;
+                        else
+                            gain = float(atof(tok.c_str()));
+                    }
+                    events.push_back({t, [file, loop, gain] {
+                                          std::string err;
+                                          if(Sim::Get().LoadInputFile(file, err))
+                                              Sim::Get().PlayInput(loop, gain);
+                                          else
+                                              fprintf(stderr, "%s\n", err.c_str());
+                                      }});
+                }
+            }
+            else if(cmd == "jack")
+            {
+                std::string arg;
+                ss >> arg;
+                bool in = arg == "in" || arg == "plugged";
+                events.push_back({t, [in] { Sim::Get().SetLineIn(in); }});
             }
             else if(cmd == "leds")
             {

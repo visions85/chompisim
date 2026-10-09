@@ -32,6 +32,11 @@ struct Options
     float       scale      = 1.f;
     int         pair       = 1; /**< output pair for the sound card: 0 hp, 1 line */
     bool        keymap     = true; /**< start with the key map overlay shown */
+    std::string input;              /**< WAV to play into the inputs */
+    bool        input_loop = false;
+    float       input_gain = 1.f;
+    int         line_in    = -1;    /**< aux jack: 1 plugged, 0 not, -1 plugged while a sound is loaded */
+    bool        mic        = false; /**< feed the computer's microphone */
 };
 
 constexpr float  kDegreesPerDetent = 15.f; /**< 24 detents per turn */
@@ -50,6 +55,12 @@ void PrintUsage(const char* argv0)
                 "  --scale <float>       window scale (default 1.0)\n"
                 "  --pair <0|1>          output pair for the sound card: 0 headphones, 1 line out (default 1)\n"
                 "  --no-keymap           start without the key map overlay (/ or ? toggles it)\n"
+                "  --input <file.wav>    sound to play into the inputs: F7 plays it, F8 stops it;\n"
+                "                        dropping a WAV onto the window loads and plays it too\n"
+                "  --loop                loop the input sound\n"
+                "  --gain <float>        input sound level (default 1.0)\n"
+                "  --line-in | --mic-in  aux jack plugged or not (default: plugged while a sound is loaded)\n"
+                "  --mic                 feed the computer's microphone into the inputs\n"
                 "  --help                this text\n",
                 argv0);
 }
@@ -79,6 +90,26 @@ int ParseArgs(int argc, char** argv, Options& o)
             o.no_audio = true;
         else if(a == "--no-keymap")
             o.keymap = false;
+        else if(a == "--input")
+        {
+            if(!value(v))
+                return 1;
+            o.input = v;
+        }
+        else if(a == "--loop")
+            o.input_loop = true;
+        else if(a == "--gain")
+        {
+            if(!value(v))
+                return 1;
+            o.input_gain = float(std::atof(v));
+        }
+        else if(a == "--line-in")
+            o.line_in = 1;
+        else if(a == "--mic-in")
+            o.line_in = 0;
+        else if(a == "--mic")
+            o.mic = true;
         else if(a == "--card")
         {
             if(!value(v))
@@ -233,6 +264,12 @@ void AudioCallback(void* userdata, Uint8* stream, int len)
     Sim::Get().RenderStereo(reinterpret_cast<float*>(stream), size_t(len) / (2 * sizeof(float)), pair);
 }
 
+/** Host microphone frames (mono float) go to the simulated inputs. */
+void CaptureCallback(void*, Uint8* stream, int len)
+{
+    Sim::Get().PushInput(reinterpret_cast<const float*>(stream), size_t(len) / sizeof(float));
+}
+
 bool SaveScreenshot(SDL_Renderer* r, const std::string& path)
 {
     int w = 0, h = 0;
@@ -279,7 +316,42 @@ class App
         }
         Sim::Get().Start();
         sim_started_ = true;
+        SetupInput();
         return true;
+    }
+
+    /** The input sound from --input, and the aux jack. */
+    void SetupInput()
+    {
+        if(!opt_.input.empty())
+        {
+            std::string err;
+            if(Sim::Get().LoadInputFile(opt_.input, err))
+                input_loaded_ = true;
+            else
+                std::fprintf(stderr, "%s\n", err.c_str());
+        }
+        // a loaded sound plugs the aux jack unless told otherwise, so the firmware takes it in stereo
+        Sim::Get().SetLineIn(opt_.line_in >= 0 ? opt_.line_in != 0 : input_loaded_);
+    }
+
+    /** Opens the computer's microphone (--mic) and feeds it to the simulated inputs. */
+    void OpenMic()
+    {
+        SDL_AudioSpec want{}, have{};
+        want.freq     = kAudioRate;
+        want.format   = AUDIO_F32SYS;
+        want.channels = 1;
+        want.samples  = kAudioFrames;
+        want.callback = CaptureCallback;
+        mic_dev_      = SDL_OpenAudioDevice(nullptr, 1, &want, &have, 0);
+        if(mic_dev_ == 0)
+        {
+            std::fprintf(stderr, "microphone not available: %s\n", SDL_GetError());
+            return;
+        }
+        SDL_PauseAudioDevice(mic_dev_, 0);
+        std::fprintf(stderr, "microphone open, %d Hz\n", have.freq);
     }
 
     bool InitVideo()
@@ -344,6 +416,8 @@ class App
                               + std::to_string(pair_) + (pair_ == 0 ? " (hp)" : " (line)");
                 SDL_PauseAudioDevice(audio_dev_, 0);
                 std::fprintf(stderr, "%s\n", audio_desc_.c_str());
+                if(opt_.mic)
+                    OpenMic();
                 return;
             }
             std::fprintf(stderr, "SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
@@ -356,6 +430,11 @@ class App
 
     void Shutdown()
     {
+        if(mic_dev_ != 0)
+        {
+            SDL_CloseAudioDevice(mic_dev_);
+            mic_dev_ = 0;
+        }
         if(audio_dev_ != 0)
         {
             SDL_CloseAudioDevice(audio_dev_);
@@ -502,6 +581,16 @@ class App
             ui_.keymap = !ui_.keymap;
             Debug("keymap %s", ui_.keymap ? "on" : "off");
         }
+        else if(k == SDLK_F7 && down)
+        {
+            Sim::Get().PlayInput(opt_.input_loop, opt_.input_gain);
+            Debug("input play");
+        }
+        else if(k == SDLK_F8 && down)
+        {
+            Sim::Get().StopInput();
+            Debug("input stop");
+        }
         else if(k >= SDLK_F1 && k <= SDLK_F6)
         {
             int e2 = int(k - SDLK_F1); // F1..F6 = ENC_SW1..ENC_SW6
@@ -517,6 +606,23 @@ class App
     {
         switch(e.type)
         {
+            case SDL_DROPFILE:
+            {
+                std::string path = e.drop.file ? e.drop.file : "";
+                SDL_free(e.drop.file);
+                std::string err;
+                if(Sim::Get().LoadInputFile(path, err))
+                {
+                    input_loaded_ = true;
+                    if(opt_.line_in < 0)
+                        Sim::Get().SetLineIn(true);
+                    Sim::Get().PlayInput(opt_.input_loop, opt_.input_gain);
+                    log_.push_back("input: " + Sim::Get().GetInputState().name);
+                }
+                else
+                    log_.push_back(err);
+                break;
+            }
             case SDL_QUIT: running_ = false; break;
             case SDL_KEYDOWN:
             case SDL_KEYUP: HandleKey(e.key); break;
@@ -621,6 +727,20 @@ class App
                       static_cast<unsigned long long>(st.blocks_rendered), Sim::Get().NowMs(), st.max_block_us,
                       Sim::Get().FirmwareRunning() ? "running" : "stopped");
         ui_.status = buf;
+
+        InputState in = Sim::Get().GetInputState();
+        if(!in.name.empty() || mic_dev_ != 0)
+        {
+            char ib[200];
+            if(!in.name.empty())
+                std::snprintf(ib, sizeof ib, "   in: %s %.1f/%.1f s %s%s", in.name.c_str(), in.position_s, in.length_s,
+                              in.playing ? (in.loop ? "looping" : "playing") : "stopped (F7 plays)",
+                              mic_dev_ ? " + mic" : "");
+            else
+                std::snprintf(ib, sizeof ib, "   in: microphone");
+            ui_.status += ib;
+            ui_.status += in.line_in ? "   jack: aux" : "   jack: none (mic)";
+        }
     }
 
     void Loop()
@@ -678,6 +798,8 @@ class App
     SDL_Window*                 window_      = nullptr;
     SDL_Renderer*               renderer_    = nullptr;
     SDL_AudioDeviceID           audio_dev_   = 0;
+    SDL_AudioDeviceID           mic_dev_     = 0;
+    bool                        input_loaded_ = false;
     std::string                 audio_desc_;
     float                       draw_scale_  = 1.f;
     float                       mouse_scale_ = 1.f;

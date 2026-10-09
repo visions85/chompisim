@@ -161,12 +161,12 @@ constexpr float kTextX   = 16;
 const char* const kHint1 = "/ or ? = key map   PIANO  z s x d c v g b h n j m = lower octave   q 2 w 3 e r 5 t 6 y 7 u i = upper   "
                            "SPACE play   RETURN loop   L-SHIFT chompi (hold)   TAB mode   ESC quit";
 const char* const kHint2 = "KNOBS  drag or scroll = turn   click = push   right-click = hold   [ ] transport   - = volume   "
-                           "LEFT/RIGHT last small knob   F1-F6 push   mouse clicks press keys";
+                           "LEFT/RIGHT last small knob   F1-F6 push   F7/F8 play/stop input sound";
 /** Hint lines while the key map overlay is up. */
 const char* const kMapHint1 = "KEY MAP   the letters on the caps play the notes (two octaves)   LEFT/RIGHT arrows turn the small knob "
                               "touched last   / or ? hides this map";
 const char* const kMapHint2 = "MOUSE   click or hold any key   drag up/down or scroll on a knob = turn   click a knob = push   "
-                              "right-click = hold   ESC quit";
+                              "right-click = hold   F7/F8 play/stop the input sound   ESC quit";
 
 // ---------------------------------------------------------------------------
 // Colours: a cream enclosure with white caps, like the instrument. No artwork

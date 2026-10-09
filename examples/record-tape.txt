@@ -1,0 +1,18 @@
+# Sample an imported sound with the TAPE firmware, play it back and save it
+# to a slot on the card.
+#   chompi-sim --card <copy of card-profiles/tape-2.0> --seconds 18 --script examples/record-tape.txt --wav out.wav
+# With the mode switch up, the CHOMPI key records while it is held; the
+# recording lands in the chompi slot and the keys play it at once.
+8.0  jack in                     # a cable in the aux jack: the firmware takes the aux input
+8.5  button CHOMPI down          # start recording
+8.6  input examples/tone.wav     # the sound to sample, played into the inputs
+10.0 button CHOMPI up            # stop recording (1.5 s long)
+10.5 note 12 1.0                 # the middle key plays the new sample at its original pitch
+12.0 toggle down                 # the save lives in the menu: mode switch down ...
+12.3 button CHOMPI down          # ... CHOMPI opens it ...
+12.6 note 22 0.2                 # ... the top black key (7) is SAVE, pressed while CHOMPI is held ...
+13.0 button CHOMPI up
+13.3 note 4 0.2                  # ... a white key picks the slot (the third, c = slot 3) ...
+13.8 press CHOMPI 0.3            # ... and CHOMPI confirms: the card gets jammi_a3.wav
+16.0 toggle up
+16.5 note 12 1.0                 # slot 3 plays the saved sample

@@ -5,8 +5,13 @@
 #include "daisy_seed.h"
 #include "encoder.h"
 #include "ff.h"
+#include "wav.h"
+#include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <vector>
 
 using namespace daisy;
 using namespace chompi_sim;
@@ -33,6 +38,25 @@ static void AdvanceMs(int ms)
     float* outp[kNumOutputs] = {buf[0], buf[1], buf[2], buf[3]};
     for(int i = 0; i < ms * kSampleRate / 1000 / kBlockSize; i++)
         Sim::Get().RenderBlock(nullptr, outp);
+}
+
+/** A 16-bit stereo PCM WAV: a sine of `hz` at amplitude 0.5 on the left and 0.25 on the right. */
+static void WriteTestWav(const std::string& path, int rate, int frames, float hz)
+{
+    std::vector<uint8_t> d;
+    auto                 u32 = [&](uint32_t v) { for(int i = 0; i < 4; i++) d.push_back(uint8_t(v >> (8 * i))); };
+    auto                 u16 = [&](uint16_t v) { d.push_back(uint8_t(v)); d.push_back(uint8_t(v >> 8)); };
+    auto                 tag = [&](const char* s) { d.insert(d.end(), s, s + 4); };
+    tag("RIFF"); u32(36 + uint32_t(frames) * 4); tag("WAVE");
+    tag("fmt "); u32(16); u16(1); u16(2); u32(uint32_t(rate)); u32(uint32_t(rate) * 4); u16(4); u16(16);
+    tag("data"); u32(uint32_t(frames) * 4);
+    for(int i = 0; i < frames; i++)
+    {
+        float s = std::sin(2.f * 3.14159265f * hz * float(i) / float(rate));
+        u16(uint16_t(int16_t(std::lround(s * 0.5f * 32767.f))));
+        u16(uint16_t(int16_t(std::lround(s * 0.25f * 32767.f))));
+    }
+    std::ofstream(path, std::ios::binary).write(reinterpret_cast<const char*>(d.data()), std::streamsize(d.size()));
 }
 
 int main(int argc, char** argv)
@@ -175,6 +199,49 @@ int main(int argc, char** argv)
     i2c.ReceiveBlocking(0x3F | 0x80, st, 6, 10);
     CHECK(((st[1] >> 6) & 1) == 1, "VIN_GD should read plugged in");
     CHECK(((st[2] >> 5) & 7) == 5, "CHG_STAT should read full");
+
+    // ---- audio input feed: a 44.1 kHz WAV is read, resampled to 48 kHz and played into the inputs ----
+    {
+        const std::string wav = (std::filesystem::temp_directory_path() / "chompi-selftest-tone.wav").string();
+        WriteTestWav(wav, 44100, 22050, 1000.f); // 0.5 s of 1 kHz
+        WavClip     clip;
+        std::string err;
+        CHECK(LoadWav(wav, clip, err), "LoadWav: %s", err.c_str());
+        CHECK(clip.rate == 44100 && clip.channels == 2 && clip.left.size() == 22050, "wav header: %d Hz, %d ch, %zu frames", clip.rate, clip.channels, clip.left.size());
+        ResampleWav(clip, kSampleRate);
+        CHECK(clip.left.size() == 24000, "resampled length %zu", clip.left.size());
+        int   crossings = 0;
+        float peak_l = 0.f, peak_r = 0.f;
+        for(size_t i = 1; i < clip.left.size(); i++)
+        {
+            crossings += (clip.left[i - 1] < 0.f) != (clip.left[i] < 0.f);
+            peak_l = std::max(peak_l, std::fabs(clip.left[i]));
+            peak_r = std::max(peak_r, std::fabs(clip.right[i]));
+        }
+        CHECK(crossings >= 998 && crossings <= 1002, "1 kHz sine after resampling: %d zero crossings in 0.5 s", crossings);
+        CHECK(std::fabs(peak_l - 0.5f) < 0.02f && std::fabs(peak_r - 0.25f) < 0.02f, "peaks %.3f %.3f", peak_l, peak_r);
+
+        CHECK(Sim::Get().LoadInputFile(wav, err), "LoadInputFile: %s", err.c_str());
+        InputState st = Sim::Get().GetInputState();
+        CHECK(std::fabs(st.length_s - 0.5) < 0.001 && !st.playing, "clip length %.4f s", st.length_s);
+        CHECK(!st.line_in, "the aux jack starts unplugged");
+        Sim::Get().SetLineIn(true);
+        CHECK(Sim::Get().GetInputState().line_in, "aux jack plugged");
+        Sim::Get().PlayInput(false, 1.f);
+        AdvanceMs(200);
+        st = Sim::Get().GetInputState();
+        CHECK(st.playing && std::fabs(st.position_s - 0.2) < 0.002, "position after 200 ms: %.3f s", st.position_s);
+        AdvanceMs(400);
+        CHECK(!Sim::Get().GetInputState().playing, "a one-shot clip stops at its end");
+        Sim::Get().PlayInput(true, 1.f);
+        AdvanceMs(700);
+        st = Sim::Get().GetInputState();
+        CHECK(st.playing && std::fabs(st.position_s - 0.2) < 0.002, "looped position after 700 ms: %.3f s", st.position_s);
+        Sim::Get().StopInput();
+        Sim::Get().SetLineIn(false);
+        std::filesystem::remove(wav);
+        printf("input feed: %d crossings, peaks %.2f %.2f, length %.3f s\n", crossings, peak_l, peak_r, st.length_s);
+    }
 
     printf(fails ? "SELFTEST FAILED (%d)\n" : "SELFTEST OK\n", fails);
     return fails ? 1 : 0;

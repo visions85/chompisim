@@ -142,7 +142,7 @@ endif()
 # ---- self-test of the device models (no UI) ----
 if(NOT CHOMPI_SIM_STUB)
   add_executable(chompi-sim-selftest tests/selftest.cpp)
-  target_include_directories(chompi-sim-selftest PRIVATE "${CMAKE_SOURCE_DIR}/host/libdaisy-sim/include" "${CHOMPI_FW_STAGED}")
+  target_include_directories(chompi-sim-selftest PRIVATE "${CMAKE_SOURCE_DIR}/host/libdaisy-sim/include" "${CHOMPI_FW_STAGED}" "${CMAKE_SOURCE_DIR}/sim/src")
   target_compile_definitions(chompi-sim-selftest PRIVATE CHOMPI_SIM=1)
   target_link_libraries(chompi-sim-selftest PRIVATE chompi_sim)
   target_compile_options(chompi-sim-selftest PRIVATE -Wno-attributes)

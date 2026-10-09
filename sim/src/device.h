@@ -14,6 +14,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <queue>
 #include <string>
@@ -183,6 +184,22 @@ class Device
     size_t             carry_pos = 0;
     std::thread        null_thread;
     std::atomic<bool>  null_run{false};
+
+    // ---- audio inputs: a clip played into mic + aux, and host microphone frames ----
+    struct InputClip
+    {
+        std::string        name;
+        std::vector<float> l, r;
+    };
+    mutable std::mutex         in_m;
+    std::shared_ptr<InputClip> in_clip;
+    size_t                     in_pos     = 0;
+    bool                       in_playing = false;
+    bool                       in_loop    = false;
+    float                      in_gain    = 1.f;
+    std::vector<float>         live_ring = std::vector<float>(kSampleRate / 2); /**< host microphone frames */
+    size_t                     live_w = 0, live_count = 0;
+    void                       MixInputs(float (*in)[kBlockSize]);
 
     // ---- LEDs ----
     mutable std::mutex led_m;

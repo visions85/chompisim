@@ -141,6 +141,8 @@ writes a WAV file, LED snapshots and a picture of the panel.
 12.5 leds               # append an LED snapshot to --leds FILE
 13.0 card out           # pull the SD card (card in puts it back)
 13.5 power off          # unplug USB power; battery low|ok sets the charger's battery flag
+8.6  input tone.wav     # play a WAV into the inputs (then: loop, a gain); "input stop" stops it
+8.0  jack in            # a cable in the aux jack (in|out): the firmware records the aux input, not the mic
 ```
 
 ```
@@ -163,6 +165,33 @@ was rendered this way from `examples/demo.txt` (normalised afterwards).
 `docs/gui-wave.png` shows the window with the key map overlay and WAVE holding
 a C major chord, `docs/gui-tape.png` the plain panel with TAPE holding the same
 chord, and `docs/gui-stub.png` the stand-in core used to develop the front-end.
+
+## Sampling: sounds into the inputs
+
+The firmwares record from the built-in microphone or, with a cable in the aux
+jack, from the aux input. The simulator feeds those inputs from a sound file,
+or from the computer's microphone, so you can sample into the simulated
+instrument the way you would into the real one.
+
+- `chompi-sim-gui --input sound.wav` loads a WAV (PCM or float, any rate,
+  mono or stereo; it is resampled to 48 kHz). `F7` plays it into the inputs
+  from the start, `F8` stops it; `--loop` and `--gain` adjust it. Dropping a
+  WAV onto the window loads and plays it too.
+- A loaded sound plugs the aux jack, so the firmware takes it in stereo
+  through its line-in path; `--mic-in` leaves the jack empty and the sound
+  arrives as a mono microphone signal instead (`--line-in` forces the jack).
+- `--mic` feeds the computer's microphone (the default recording device)
+  into the inputs as well.
+- The status line shows the loaded sound, its play position and the jack.
+
+In TAPE, with the mode switch up, the CHOMPI key records while it is held
+(or latches, if that option is on): press it, press `F7`, release it, and the
+keys play the new sample from the chompi slot. The save is in the menu: mode
+switch down, hold CHOMPI, press the top black key (`7`) for SAVE, release
+CHOMPI, press the white key of the slot, press CHOMPI; the card folder gets
+`jammi_a<slot>.wav`. `examples/record-tape.txt` scripts exactly that with
+`examples/tone.wav` and plays the saved slot at the end; TEMPO records the
+same way. WAVE does not use the inputs.
 
 ## How it works
 

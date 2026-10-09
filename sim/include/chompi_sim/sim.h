@@ -120,6 +120,17 @@ struct Stats
     double   max_block_us    = 0; /**< worst RenderBlock() wall time */
 };
 
+/** State of the audio-input feed (see Sim::LoadInputFile). */
+struct InputState
+{
+    std::string name;               /**< file name of the loaded clip, empty if none */
+    bool        playing    = false;
+    bool        loop       = false;
+    double      position_s = 0;     /**< play position in the clip */
+    double      length_s   = 0;
+    bool        line_in    = false; /**< the aux jack is plugged */
+};
+
 class Sim
 {
   public:
@@ -173,6 +184,24 @@ class Sim
     void SetBatteryLow(bool low);
     /** Pull the card out (or put it back). The firmware shows its no-card page. */
     void SetCardPresent(bool present);
+
+    // ---- audio inputs (thread-safe) ----
+    /** Loads a WAV file (PCM or float, any rate, mono or stereo; resampled to
+     *  48 kHz) as the input clip. Returns false and sets `err` on failure. */
+    bool LoadInputFile(const std::string& path, std::string& err);
+    /** Plays the loaded clip from its start into the microphone input (mono
+     *  mix) and the aux input (stereo), which is where the firmware records
+     *  from. */
+    void PlayInput(bool loop = false, float gain = 1.f);
+    void StopInput();
+    InputState GetInputState() const;
+    /** Plug or unplug the aux jack. Plugged, the firmware records and
+     *  monitors the aux input instead of the microphone. */
+    void SetLineIn(bool plugged);
+    bool LineIn() const;
+    /** Hands the firmware frames from a host microphone (mono, 48 kHz); the
+     *  following blocks mix them into the inputs. */
+    void PushInput(const float* mono, size_t frames);
 
     // ---- misc ----
     uint64_t SampleClock() const; /**< samples rendered so far */
