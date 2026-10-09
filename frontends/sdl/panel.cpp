@@ -158,10 +158,15 @@ constexpr float kLogY    = 392;
 constexpr float kLogDy   = 10;
 constexpr float kTextX   = 16;
 
-const char* const kHint1 = "PIANO  z s x d c v g b h n j m = lower octave   q 2 w 3 e r 5 t 6 y 7 u i = upper octave   "
-                           "SPACE play   RETURN loop   L-SHIFT chompi (hold)   TAB mode toggle   ESC quit";
-const char* const kHint2 = "KNOBS  drag up/down or scroll = turn   click = push   right-click = hold   [ ] transport   - = volume   "
-                           "LEFT/RIGHT last small knob   F1-F6 push ENC1-ENC6 (hold)   mouse clicks press keys";
+const char* const kHint1 = "/ or ? = key map   PIANO  z s x d c v g b h n j m = lower octave   q 2 w 3 e r 5 t 6 y 7 u i = upper   "
+                           "SPACE play   RETURN loop   L-SHIFT chompi (hold)   TAB mode   ESC quit";
+const char* const kHint2 = "KNOBS  drag or scroll = turn   click = push   right-click = hold   [ ] transport   - = volume   "
+                           "LEFT/RIGHT last small knob   F1-F6 push   mouse clicks press keys";
+/** Hint lines while the key map overlay is up. */
+const char* const kMapHint1 = "KEY MAP   the letters on the caps play the notes (two octaves)   LEFT/RIGHT arrows turn the small knob "
+                              "touched last   / or ? hides this map";
+const char* const kMapHint2 = "MOUSE   click or hold any key   drag up/down or scroll on a knob = turn   click a knob = push   "
+                              "right-click = hold   ESC quit";
 
 // ---------------------------------------------------------------------------
 // Colours: a cream enclosure with white caps, like the instrument. No artwork
@@ -195,11 +200,18 @@ constexpr SDL_Color kToggleGrip  = {150, 146, 138, 255};
 constexpr SDL_Color kHintColor   = {104, 110, 124, 255};
 constexpr SDL_Color kStatusColor = {170, 176, 188, 255};
 constexpr SDL_Color kLogColor    = {120, 170, 226, 255};
-constexpr SDL_Color kChipFace    = {252, 252, 250, 255};
-constexpr SDL_Color kChipEdge    = {122, 118, 110, 255};
-constexpr SDL_Color kChipText    = {48, 46, 44, 255};
-constexpr float     kChipH       = 18.f; /**< height of a computer-key chip */
+
+/** Key map overlay: dark boxes with light names and amber keys and arrows. */
+constexpr SDL_Color kMapBox      = {30, 32, 40, 242};
+constexpr SDL_Color kMapEdge     = {118, 122, 138, 255};
+constexpr SDL_Color kMapText     = {236, 236, 230, 255};
+constexpr SDL_Color kMapKey      = {255, 212, 118, 255};
+constexpr SDL_Color kMapArrow    = {255, 186, 76, 255};
+constexpr uint8_t   kMapDim      = 64;   /**< alpha of the shade over the instrument */
+constexpr float     kChipH       = 18.f; /**< height of a computer-key chip on a cap */
 constexpr float     kLabelH      = 7.f;  /**< height of the 1 px label font */
+constexpr float     kMapPad      = 4.f;  /**< padding inside a callout box */
+constexpr float     kMapLineGap  = 3.f;  /**< gap between the two lines of a callout */
 
 SDL_Color Scaled(SDL_Color c, float f)
 {
@@ -308,6 +320,32 @@ class Canvas
         DrawText(r_, dx, int(std::lround(y * scale_)), dpx, c, s);
     }
 
+    /** A line of width w, drawn as a run of discs so it is anti-aliased. */
+    void Line(float x1, float y1, float x2, float y2, float w, SDL_Color c)
+    {
+        float dx = x2 - x1, dy = y2 - y1, len = std::sqrt(dx * dx + dy * dy);
+        int   n = std::max(1, int(std::ceil(len / 0.75f)));
+        for(int i = 0; i <= n; i++)
+        {
+            float t = float(i) / float(n);
+            Disc(x1 + dx * t, y1 + dy * t, w / 2, c);
+        }
+    }
+
+    /** An arrow from a dot at (x1, y1) to a tip at (x2, y2). */
+    void Arrow(float x1, float y1, float x2, float y2, SDL_Color c)
+    {
+        float dx = x2 - x1, dy = y2 - y1, len = std::sqrt(dx * dx + dy * dy);
+        if(len < 1.f)
+            return;
+        float           ux = dx / len, uy = dy / len;
+        constexpr float h = 8.f, s = 0.5f; // head length and half-width
+        Line(x1, y1, x2 - ux * 3.f, y2 - uy * 3.f, 2.f, c);
+        Line(x2, y2, x2 - ux * h - uy * h * s, y2 - uy * h + ux * h * s, 2.f, c);
+        Line(x2, y2, x2 - ux * h + uy * h * s, y2 - uy * h - ux * h * s, 2.f, c);
+        Disc(x1, y1, 2.5f, c);
+    }
+
   private:
     static constexpr int   kSprite    = 128;
     static constexpr float kDiscR     = 60.f;
@@ -409,22 +447,6 @@ void DrawLed(Canvas& cv, float cx, float cy, float r, Rgb c)
     cv.Disc(cx - r * 0.3f, cy - r * 0.3f, r * 0.3f, SDL_Color{255, 255, 255, 110});
 }
 
-/** The computer key for a control: a small key-shaped chip with the key's
- *  name, centred on (cx, cy). A single character is drawn large, a key name
- *  small. */
-void DrawKeyChip(Canvas& cv, float cx, float cy, const char* name)
-{
-    if(!name || !*name)
-        return;
-    const std::string s(name);
-    const int         px = s.size() == 1 ? 2 : 1;
-    const float       tw = float(TextWidth(s, px)), th = float(TextHeight(px));
-    const float       w  = std::max(kChipH, tw + 10.f);
-    cv.RoundRect(cx - w / 2, cy - kChipH / 2, w, kChipH, 4.f, kChipEdge);
-    cv.RoundRect(cx - w / 2 + 1, cy - kChipH / 2 + 1, w - 2, kChipH - 3, 3.f, kChipFace);
-    cv.Text(cx, cy - th / 2 - 1, px, kChipText, s, 0);
-}
-
 void DrawPianoKeys(Canvas& cv, const UiState& st)
 {
     for(int semi = 0; semi < 25; semi++)
@@ -448,7 +470,6 @@ void DrawPianoKeys(Canvas& cv, const UiState& st)
             cv.RoundRect(r.x + in, r.y + in + dy, r.w - 2 * in, r.h - 2 * in - kKeyLipH + (pressed ? 3.f : 0.f), kCapRad - 2, lit);
             cv.Glow(r.x + r.w / 2, r.y + r.h / 2 + dy, r.w * 0.55f, led, 0.5f, true);
         }
-        DrawKeyChip(cv, r.x + r.w / 2, r.y + r.h - kKeyLipH - kChipH / 2 - 3 + dy, kPianoKeyNames[semi]);
     }
 }
 
@@ -471,23 +492,8 @@ void DrawKnob(Canvas& cv, const KnobDef& k, const UiState& st)
     for(float t = 0.38f; t <= 0.86f; t += 0.04f)
         cv.Disc(cx + sx * t * r, cy + sy * t * r, pw, kPointer);
 
-    cv.Text(cx, cy + R + 6, 1, kLabel, k.label, 0);
-
-    // computer keys: the push key under the label, the turn keys either side
-    // of the knob (the arrow keys follow the small knob touched last)
-    DrawKeyChip(cv, cx, cy + R + 6 + kLabelH + kChipH / 2 + 3, k.push_key);
-    const char* ccw = k.ccw_key;
-    const char* cw  = k.cw_key;
-    if(!ccw && st.arrow_knob == k.enc)
-    {
-        ccw = "<";
-        cw  = ">";
-    }
-    if(ccw && cw)
-    {
-        DrawKeyChip(cv, cx - R - kChipH * 0.8f, cy, ccw);
-        DrawKeyChip(cv, cx + R + kChipH * 0.8f, cy, cw);
-    }
+    if(!st.keymap) // the key map names the knobs in its callouts
+        cv.Text(cx, cy + R + 6, 1, kLabel, k.label, 0);
 }
 
 void DrawFuncKey(Canvas& cv, const FuncKeyDef& f, const UiState& st)
@@ -497,8 +503,7 @@ void DrawFuncKey(Canvas& cv, const FuncKeyDef& f, const UiState& st)
     bool      hover   = st.hover == Hit{HitKind::FuncKey, f.button};
     float     dy      = pressed ? kKeyPressDy : 0.f;
     DrawKeyCap(cv, r, kFuncFace, kFuncSide, pressed, hover);
-    cv.Text(r.x + r.w / 2, r.y + r.h / 2 - 10 + dy, 1, kFuncText, f.label, 0);
-    DrawKeyChip(cv, r.x + r.w / 2, r.y + r.h / 2 + 13 + dy, f.key);
+    cv.Text(r.x + r.w / 2, r.y + r.h / 2 - 5 + dy, 1, kFuncText, f.label, 0);
 }
 
 void DrawToggle(Canvas& cv, const UiState& st)
@@ -511,14 +516,14 @@ void DrawToggle(Canvas& cv, const UiState& st)
     float ty = down ? cy + t.h / 2 - t.thumb_h - 1 : cy - t.h / 2 + 1;
     cv.RoundRect(cx - t.thumb_w / 2, ty, t.thumb_w, t.thumb_h, 5, hover ? Scaled(kToggleThumb, 1.04f) : kToggleThumb);
     cv.FillRect(cx - t.thumb_w / 2 + 6, ty + t.thumb_h / 2 - 1, t.thumb_w - 12, 2, kToggleGrip);
-    cv.Text(cx, cy + t.h / 2 + 8, 1, kLabel, "MODE", 0);
-    DrawKeyChip(cv, cx, cy + t.h / 2 + 8 + kLabelH + kChipH / 2 + 3, "TAB");
+    if(!st.keymap)
+        cv.Text(cx, cy + t.h / 2 + 8, 1, kLabel, "MODE", 0);
 }
 
 void DrawTextArea(Canvas& cv, const UiState& st)
 {
-    cv.Text(kTextX, kHintY1, 1, kHintColor, kHint1);
-    cv.Text(kTextX, kHintY2, 1, kHintColor, kHint2);
+    cv.Text(kTextX, kHintY1, 1, kHintColor, st.keymap ? kMapHint1 : kHint1);
+    cv.Text(kTextX, kHintY2, 1, kHintColor, st.keymap ? kMapHint2 : kHint2);
     cv.Text(kTextX, kStatusY, 1, kStatusColor, st.status);
     float y = kLogY;
     for(const std::string& line : st.log)
@@ -526,6 +531,98 @@ void DrawTextArea(Canvas& cv, const UiState& st)
         cv.Text(kTextX, y, 1, kLogColor, "> " + line);
         y += kLogDy;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Key map overlay: the computer keys, drawn over a shaded instrument. The
+// piano caps carry their letters; every other control gets a description box
+// with an arrow to it.
+// ---------------------------------------------------------------------------
+
+/** A key-shaped chip with a computer key's name, centred on (cx, cy). A
+ *  single character is drawn large, a key name small. */
+void DrawKeyChip(Canvas& cv, float cx, float cy, const char* name)
+{
+    if(!name || !*name)
+        return;
+    const std::string s(name);
+    const int         px = s.size() == 1 ? 2 : 1;
+    const float       tw = float(TextWidth(s, px)), th = float(TextHeight(px));
+    const float       w  = std::max(kChipH, tw + 10.f);
+    cv.RoundRect(cx - w / 2 - 1, cy - kChipH / 2 - 1, w + 2, kChipH + 2, 5.f, kMapEdge);
+    cv.RoundRect(cx - w / 2, cy - kChipH / 2, w, kChipH, 4.f, kMapBox);
+    cv.Text(cx, cy - th / 2, px, kMapKey, s, 0);
+}
+
+/** A description box (name, keys) with an arrow from one of its edges to a
+ *  point on the control. */
+struct Callout
+{
+    std::string name;
+    std::string keys;
+    float       cx;    /**< box centre x */
+    float       top;   /**< box top y */
+    float       ax;    /**< x where the arrow leaves the box */
+    bool        below; /**< the arrow leaves the bottom edge (else the top edge) */
+    float       tx, ty; /**< arrow tip */
+};
+
+void DrawCallout(Canvas& cv, const Callout& c)
+{
+    const float w = float(std::max(TextWidth(c.name, 1), TextWidth(c.keys, 1))) + 2 * kMapPad + 2;
+    const float h = 2 * kLabelH + kMapLineGap + 2 * kMapPad;
+    const float x = c.cx - w / 2;
+    cv.RoundRect(x - 1, c.top - 1, w + 2, h + 2, 5.f, kMapEdge);
+    cv.RoundRect(x, c.top, w, h, 4.f, kMapBox);
+    cv.Text(c.cx, c.top + kMapPad, 1, kMapText, c.name, 0);
+    cv.Text(c.cx, c.top + kMapPad + kLabelH + kMapLineGap, 1, kMapKey, c.keys, 0);
+    cv.Arrow(c.ax, c.below ? c.top + h + 1 : c.top - 1, c.tx, c.ty, kMapArrow);
+}
+
+void DrawKeyMap(Canvas& cv, const UiState& st)
+{
+    cv.FillRect(kBody.x, kBody.y, kBody.w, kBody.h, SDL_Color{0, 0, 0, kMapDim});
+
+    for(int semi = 0; semi < 25; semi++)
+    {
+        SDL_FRect r  = PianoKeyRect(semi);
+        float     dy = Sim::Get().ButtonPressed(kPianoKeys[semi]) ? kKeyPressDy : 0.f;
+        DrawKeyChip(cv, r.x + r.w / 2, r.y + r.h - kKeyLipH - kChipH / 2 - 3 + dy, kPianoKeyNames[semi]);
+    }
+
+    // Boxes sit in two free bands: above the LED row and between the knobs
+    // and the upper caps. Arrows that would cross an LED leave the box off
+    // centre and land on the knob's shoulder.
+    constexpr float kBandTop = 5.f;
+    constexpr float kBandMid = 164.f;
+    std::vector<Callout> callouts;
+    {
+        const ToggleDef& t = kToggle;
+        callouts.push_back({"MODE switch", "TAB (latches)", 60.f, kBandTop, 72.f, true, X(t.x_mm), Y(t.y_mm) - t.h / 2 - 3});
+    }
+    for(const FuncKeyDef& f : kFuncKeys)
+    {
+        SDL_FRect r  = FuncKeyRect(f);
+        float     cx = r.x + r.w / 2;
+        float     ax = cx + (f.button == KEY_CHOMPI ? 16.f : 6.f);
+        callouts.push_back({f.label, f.key, cx + (f.button == KEY_CHOMPI ? 4.f : 0.f), kBandTop, ax, true, ax, r.y - 2});
+    }
+    for(const KnobDef& k : kKnobs)
+    {
+        float       cx = X(k.x_mm), cy = Y(k.y_mm), R = k.r_mm * kMmPx;
+        std::string keys = k.ccw_key ? std::string(k.ccw_key) + " " + k.cw_key + " turn  " + k.push_key + " push"
+                                     : std::string(k.push_key) + " push";
+        if(!k.ccw_key && st.arrow_knob == k.enc)
+            keys += "  < > turn";
+        if(k.enc == ENC_SW4 || k.enc == ENC_SW2 || k.enc == ENC_SW6)
+            callouts.push_back({k.label, keys, cx, kBandMid, cx, false, cx, cy + R + 2});
+        else if(k.big)
+            callouts.push_back({k.label, keys, cx, kBandTop, cx, true, cx, cy - R - 2});
+        else
+            callouts.push_back({k.label, keys, cx, kBandTop, cx + 28.f, true, cx + R * 0.5f + 1, cy - R * 0.866f - 1});
+    }
+    for(const Callout& c : callouts)
+        DrawCallout(cv, c);
 }
 
 } // namespace
@@ -550,6 +647,8 @@ void Panel::Draw(const UiState& st)
     for(int i = 0; i < kNumPanelLeds; i++)
         DrawLed(cv, X(kPanelLeds[i].x_mm), Y(kPanelLeds[i].y_mm), kPanelLeds[i].r_mm * kMmPx, Sim::Get().PanelLed(i));
     DrawToggle(cv, st);
+    if(st.keymap)
+        DrawKeyMap(cv, st);
     DrawTextArea(cv, st);
 }
 

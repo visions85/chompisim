@@ -31,6 +31,7 @@ struct Options
     double      exit_after = -1; /**< seconds, < 0 = run until closed */
     float       scale      = 1.f;
     int         pair       = 1; /**< output pair for the sound card: 0 hp, 1 line */
+    bool        keymap     = true; /**< start with the key map overlay shown */
 };
 
 constexpr float  kDegreesPerDetent = 15.f; /**< 24 detents per turn */
@@ -48,6 +49,7 @@ void PrintUsage(const char* argv0)
                 "  --exit-after <sec>    quit after that many seconds\n"
                 "  --scale <float>       window scale (default 1.0)\n"
                 "  --pair <0|1>          output pair for the sound card: 0 headphones, 1 line out (default 1)\n"
+                "  --no-keymap           start without the key map overlay (/ or ? toggles it)\n"
                 "  --help                this text\n",
                 argv0);
 }
@@ -75,6 +77,8 @@ int ParseArgs(int argc, char** argv, Options& o)
         }
         else if(a == "--no-audio")
             o.no_audio = true;
+        else if(a == "--no-keymap")
+            o.keymap = false;
         else if(a == "--card")
         {
             if(!value(v))
@@ -248,7 +252,7 @@ bool SaveScreenshot(SDL_Renderer* r, const std::string& path)
 class App
 {
   public:
-    explicit App(const Options& o) : opt_(o), pair_(o.pair) {}
+    explicit App(const Options& o) : opt_(o), pair_(o.pair) { ui_.keymap = o.keymap; }
     ~App() { Shutdown(); }
 
     int Run()
@@ -493,6 +497,11 @@ class App
             input_.KeyboardButton(KEY_CHOMPI, down);
         else if(k == SDLK_TAB && down)
             Sim::Get().SetToggle(!Sim::Get().ToggleDown());
+        else if((k == SDLK_SLASH || k == SDLK_QUESTION) && down)
+        {
+            ui_.keymap = !ui_.keymap;
+            Debug("keymap %s", ui_.keymap ? "on" : "off");
+        }
         else if(k >= SDLK_F1 && k <= SDLK_F6)
         {
             int e2 = int(k - SDLK_F1); // F1..F6 = ENC_SW1..ENC_SW6

@@ -85,10 +85,11 @@ the mode switch is drawn where the board puts it.
      [z] [x] [c] [v] [b] [n] [m] [q] [w] [e] [r] [t] [y] [u] [i]               <- lower row of caps
 ```
 
-Each key cap is lit by the LED under it. Every control carries a small
-key-shaped chip with the computer key that works it; the arrow-key chips sit
-beside whichever small knob was touched last. No artwork or logos are
-reproduced.
+Each key cap is lit by the LED under it. A key map overlay, shown at start
+and toggled with `/` or `?`, shades the instrument, prints each piano key's
+letter on its cap and draws a description box with an arrow to every switch
+and knob; the arrow-key note moves to whichever small knob was touched last.
+No artwork or logos are reproduced.
 
 | Control | Computer |
 |---|---|
@@ -101,6 +102,7 @@ reproduced.
 | Transport knob / volume knob | `[` `]` / `-` `=` |
 | Last touched small knob | Left / Right arrows |
 | Push encoders SW1 to SW6 | F1 to F6 |
+| Key map overlay | `/` or `?` (toggle; `--no-keymap` starts without it) |
 | Quit | Escape |
 
 The knobs do what the firmware makes them do. In WAVE the PITCH knob is a fine
@@ -114,7 +116,8 @@ Shift`) and press the first black key (`s`) for an octave down or the second
 
 Command line: `--card DIR` (default `card`), `--no-audio` (run without a sound
 card), `--pair 0|1` (send the headphone or the line output to the sound card,
-default line), `--scale F`, `--screenshot FILE.bmp`, `--exit-after SECONDS`.
+default line), `--scale F`, `--screenshot FILE.bmp`, `--exit-after SECONDS`,
+`--no-keymap`.
 
 The output of the firmware is quiet at the WAVE defaults (the final compressor
 is a menu-page setting); turn the volume knob up or use the firmware's menu, as
@@ -157,9 +160,9 @@ a script.
 WAVE factory card, plays a note from the keybed and one over MIDI and checks
 the audio, the MIDI output and the key LED. `docs/demo-wave-factory-card.wav`
 was rendered this way from `examples/demo.txt` (normalised afterwards).
-`docs/gui-wave.png` and `docs/gui-tape.png` show the window with the real
-firmwares holding a C major chord; `docs/gui-stub.png` is the same window on
-the stand-in core used to develop the front-end.
+`docs/gui-wave.png` shows the window with the key map overlay and WAVE holding
+a C major chord, `docs/gui-tape.png` the plain panel with TAPE holding the same
+chord, and `docs/gui-stub.png` the stand-in core used to develop the front-end.
 
 ## How it works
 
