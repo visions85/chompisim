@@ -24,8 +24,8 @@ namespace gui
 {
 using namespace chompi_sim;
 
-const char* const kPianoKeyNames[25] = {"z", "s", "x", "d", "c", "v", "g", "b", "h", "n", "j", "m", "q",
-                                        "2", "w", "3", "e", "r", "5", "t", "6", "y", "7", "u", "i"};
+const char* const kPianoKeyNames[25] = {"Z", "S", "X", "D", "C", "V", "G", "B", "H", "N", "J", "M", "Q",
+                                        "2", "W", "3", "E", "R", "5", "T", "6", "Y", "7", "U", "I"};
 
 namespace
 {
@@ -97,14 +97,16 @@ struct KnobDef
     const char* label;
     float       x_mm, y_mm, r_mm;
     bool        big;
+    const char* push_key;         /**< computer key that pushes the encoder */
+    const char* ccw_key, *cw_key; /**< keys that turn it; nullptr = the arrow keys, when touched last */
 };
 constexpr KnobDef kKnobs[] = {
-    {ENC_SW4, "PITCH", 69.39f, 68.46f, 8.5f, false},
-    {ENC_SW1, "A", 102.90f, 68.46f, 8.5f, false},
-    {ENC_SW2, "B", 136.42f, 68.46f, 8.5f, false},
-    {ENC_SW3, "C", 169.94f, 68.46f, 8.5f, false},
-    {ENC_SW5, "TRANSPORT", 210.09f, 68.85f, 15.5f, true}, // SW5 is on the lower board, under this spot
-    {ENC_SW6, "VOLUME", 300.65f, 68.46f, 8.5f, false},
+    {ENC_SW4, "PITCH", 69.39f, 68.46f, 8.5f, false, "F4", nullptr, nullptr},
+    {ENC_SW1, "A", 102.90f, 68.46f, 8.5f, false, "F1", nullptr, nullptr},
+    {ENC_SW2, "B", 136.42f, 68.46f, 8.5f, false, "F2", nullptr, nullptr},
+    {ENC_SW3, "C", 169.94f, 68.46f, 8.5f, false, "F3", nullptr, nullptr},
+    {ENC_SW5, "TRANSPORT", 210.09f, 68.85f, 15.5f, true, "F5", "[", "]"}, // SW5 is on the lower board, under this spot
+    {ENC_SW6, "VOLUME", 300.65f, 68.46f, 8.5f, false, "F6", "-", "="},
 };
 
 struct FuncKeyDef
@@ -112,11 +114,12 @@ struct FuncKeyDef
     int         button;
     const char* label;
     float       x_mm, y_mm;
+    const char* key; /**< computer key */
 };
 constexpr FuncKeyDef kFuncKeys[] = {
-    {KEY_CHOMPI, "CHOMPI", 43.03f, 65.92f}, // KEY26
-    {KEY_PLAY, "PLAY", 244.14f, 65.92f},    // KEY27
-    {KEY_LOOP, "LOOP", 264.26f, 65.92f},    // KEY28
+    {KEY_CHOMPI, "CHOMPI", 43.03f, 65.92f, "L-SHIFT"}, // KEY26
+    {KEY_PLAY, "PLAY", 244.14f, 65.92f, "SPACE"},      // KEY27
+    {KEY_LOOP, "LOOP", 264.26f, 65.92f, "RETURN"},     // KEY28
 };
 
 /** The ten panel LEDs, by PanelLed index (LED1..LED10 on the board). */
@@ -171,7 +174,6 @@ constexpr SDL_Color kLowerFace   = {226, 224, 217, 255};
 constexpr SDL_Color kLowerSide   = {176, 172, 162, 255};
 constexpr SDL_Color kUpperFace   = {196, 193, 185, 255};
 constexpr SDL_Color kUpperSide   = {146, 142, 132, 255};
-constexpr SDL_Color kKeyText     = {120, 116, 108, 255};
 constexpr SDL_Color kFuncFace    = {238, 232, 218, 255};
 constexpr SDL_Color kFuncSide    = {180, 172, 152, 255};
 constexpr SDL_Color kFuncText    = {70, 66, 60, 255};
@@ -193,6 +195,11 @@ constexpr SDL_Color kToggleGrip  = {150, 146, 138, 255};
 constexpr SDL_Color kHintColor   = {104, 110, 124, 255};
 constexpr SDL_Color kStatusColor = {170, 176, 188, 255};
 constexpr SDL_Color kLogColor    = {120, 170, 226, 255};
+constexpr SDL_Color kChipFace    = {252, 252, 250, 255};
+constexpr SDL_Color kChipEdge    = {122, 118, 110, 255};
+constexpr SDL_Color kChipText    = {48, 46, 44, 255};
+constexpr float     kChipH       = 18.f; /**< height of a computer-key chip */
+constexpr float     kLabelH      = 7.f;  /**< height of the 1 px label font */
 
 SDL_Color Scaled(SDL_Color c, float f)
 {
@@ -402,6 +409,22 @@ void DrawLed(Canvas& cv, float cx, float cy, float r, Rgb c)
     cv.Disc(cx - r * 0.3f, cy - r * 0.3f, r * 0.3f, SDL_Color{255, 255, 255, 110});
 }
 
+/** The computer key for a control: a small key-shaped chip with the key's
+ *  name, centred on (cx, cy). A single character is drawn large, a key name
+ *  small. */
+void DrawKeyChip(Canvas& cv, float cx, float cy, const char* name)
+{
+    if(!name || !*name)
+        return;
+    const std::string s(name);
+    const int         px = s.size() == 1 ? 2 : 1;
+    const float       tw = float(TextWidth(s, px)), th = float(TextHeight(px));
+    const float       w  = std::max(kChipH, tw + 10.f);
+    cv.RoundRect(cx - w / 2, cy - kChipH / 2, w, kChipH, 4.f, kChipEdge);
+    cv.RoundRect(cx - w / 2 + 1, cy - kChipH / 2 + 1, w - 2, kChipH - 3, 3.f, kChipFace);
+    cv.Text(cx, cy - th / 2 - 1, px, kChipText, s, 0);
+}
+
 void DrawPianoKeys(Canvas& cv, const UiState& st)
 {
     for(int semi = 0; semi < 25; semi++)
@@ -425,7 +448,7 @@ void DrawPianoKeys(Canvas& cv, const UiState& st)
             cv.RoundRect(r.x + in, r.y + in + dy, r.w - 2 * in, r.h - 2 * in - kKeyLipH + (pressed ? 3.f : 0.f), kCapRad - 2, lit);
             cv.Glow(r.x + r.w / 2, r.y + r.h / 2 + dy, r.w * 0.55f, led, 0.5f, true);
         }
-        cv.Text(r.x + r.w - 9, r.y + r.h - kKeyLipH - 11 + dy, 1, kKeyText, kPianoKeyNames[semi], 0);
+        DrawKeyChip(cv, r.x + r.w / 2, r.y + r.h - kKeyLipH - kChipH / 2 - 3 + dy, kPianoKeyNames[semi]);
     }
 }
 
@@ -449,6 +472,22 @@ void DrawKnob(Canvas& cv, const KnobDef& k, const UiState& st)
         cv.Disc(cx + sx * t * r, cy + sy * t * r, pw, kPointer);
 
     cv.Text(cx, cy + R + 6, 1, kLabel, k.label, 0);
+
+    // computer keys: the push key under the label, the turn keys either side
+    // of the knob (the arrow keys follow the small knob touched last)
+    DrawKeyChip(cv, cx, cy + R + 6 + kLabelH + kChipH / 2 + 3, k.push_key);
+    const char* ccw = k.ccw_key;
+    const char* cw  = k.cw_key;
+    if(!ccw && st.arrow_knob == k.enc)
+    {
+        ccw = "<";
+        cw  = ">";
+    }
+    if(ccw && cw)
+    {
+        DrawKeyChip(cv, cx - R - kChipH * 0.8f, cy, ccw);
+        DrawKeyChip(cv, cx + R + kChipH * 0.8f, cy, cw);
+    }
 }
 
 void DrawFuncKey(Canvas& cv, const FuncKeyDef& f, const UiState& st)
@@ -458,7 +497,8 @@ void DrawFuncKey(Canvas& cv, const FuncKeyDef& f, const UiState& st)
     bool      hover   = st.hover == Hit{HitKind::FuncKey, f.button};
     float     dy      = pressed ? kKeyPressDy : 0.f;
     DrawKeyCap(cv, r, kFuncFace, kFuncSide, pressed, hover);
-    cv.Text(r.x + r.w / 2, r.y + r.h / 2 - 5 + dy, 1, kFuncText, f.label, 0);
+    cv.Text(r.x + r.w / 2, r.y + r.h / 2 - 10 + dy, 1, kFuncText, f.label, 0);
+    DrawKeyChip(cv, r.x + r.w / 2, r.y + r.h / 2 + 13 + dy, f.key);
 }
 
 void DrawToggle(Canvas& cv, const UiState& st)
@@ -472,6 +512,7 @@ void DrawToggle(Canvas& cv, const UiState& st)
     cv.RoundRect(cx - t.thumb_w / 2, ty, t.thumb_w, t.thumb_h, 5, hover ? Scaled(kToggleThumb, 1.04f) : kToggleThumb);
     cv.FillRect(cx - t.thumb_w / 2 + 6, ty + t.thumb_h / 2 - 1, t.thumb_w - 12, 2, kToggleGrip);
     cv.Text(cx, cy + t.h / 2 + 8, 1, kLabel, "MODE", 0);
+    DrawKeyChip(cv, cx, cy + t.h / 2 + 8 + kLabelH + kChipH / 2 + 3, "TAB");
 }
 
 void DrawTextArea(Canvas& cv, const UiState& st)

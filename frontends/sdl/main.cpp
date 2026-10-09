@@ -603,6 +603,7 @@ class App
         ui_.log.assign(log_.begin(), log_.end());
         for(int i = 0; i < kNumEncoders; i++)
             ui_.knob_pressed[size_t(i)] = input_.EncoderPressed(i);
+        ui_.arrow_knob = last_small_knob_;
 
         Stats st = Sim::Get().GetStats();
         char  buf[256];

@@ -85,7 +85,10 @@ the mode switch is drawn where the board puts it.
      [z] [x] [c] [v] [b] [n] [m] [q] [w] [e] [r] [t] [y] [u] [i]               <- lower row of caps
 ```
 
-Each key cap is lit by the LED under it. No artwork or logos are reproduced.
+Each key cap is lit by the LED under it. Every control carries a small
+key-shaped chip with the computer key that works it; the arrow-key chips sit
+beside whichever small knob was touched last. No artwork or logos are
+reproduced.
 
 | Control | Computer |
 |---|---|

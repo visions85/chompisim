@@ -46,6 +46,7 @@ struct UiState
 {
     std::array<float, chompi_sim::kNumEncoders> knob_angle{};   /**< degrees, clockwise positive */
     std::array<bool, chompi_sim::kNumEncoders>  knob_pressed{}; /**< encoder push switches */
+    int                                          arrow_knob = -1; /**< small knob the Left/Right arrow keys turn */
     Hit                                          hover;         /**< control under the mouse */
     std::string                                  status;        /**< status line */
     std::vector<std::string>                     log;           /**< last firmware log lines, oldest first */
