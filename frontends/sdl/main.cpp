@@ -4,6 +4,7 @@
 #include <SDL.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -33,6 +34,7 @@ struct Options
 };
 
 constexpr float  kDegreesPerDetent = 15.f; /**< 24 detents per turn */
+constexpr float  kDragPixelsPerDetent = 6.f; /**< mouse drag distance per detent, logical pixels */
 constexpr int    kAudioRate   = 48000;
 constexpr int    kAudioFrames = 256;
 
@@ -408,7 +410,12 @@ class App
             case gui::HitKind::PianoKey: input_.MouseButton(kPianoKeys[h.index], true); break;
             case gui::HitKind::FuncKey: input_.MouseButton(h.index, true); break;
             case gui::HitKind::Knob:
-                input_.MouseEncoder(h.index, true);
+                // left button on a knob starts a drag-to-turn; a click without
+                // movement becomes a short push on release (see MouseRelease)
+                drag_enc_     = h.index;
+                drag_start_y_ = mouse_y_logical_;
+                drag_emitted_ = 0;
+                dragged_      = false;
                 Touch(h.index);
                 break;
             case gui::HitKind::Toggle: Sim::Get().SetToggle(!Sim::Get().ToggleDown()); break;
@@ -422,10 +429,44 @@ class App
         {
             case gui::HitKind::PianoKey: input_.MouseButton(kPianoKeys[mouse_hit_.index], false); break;
             case gui::HitKind::FuncKey: input_.MouseButton(mouse_hit_.index, false); break;
-            case gui::HitKind::Knob: input_.MouseEncoder(mouse_hit_.index, false); break;
+            case gui::HitKind::Knob:
+                if(!dragged_)
+                    QuickPush(mouse_hit_.index);
+                drag_enc_ = -1;
+                break;
             default: break;
         }
         mouse_hit_ = gui::Hit{};
+    }
+
+    /** A click on a knob without dragging: push the encoder for a moment. */
+    void QuickPush(int enc)
+    {
+        input_.MouseEncoder(enc, true);
+        push_release_at_ = now_s_ + 0.12;
+        push_enc_        = enc;
+        Debug("push enc=%d", enc);
+    }
+
+    void ServiceTimedPush()
+    {
+        if(push_enc_ >= 0 && now_s_ >= push_release_at_)
+        {
+            input_.MouseEncoder(push_enc_, false);
+            push_enc_ = -1;
+        }
+    }
+
+    /** Input tracing, enabled with CHOMPI_SIM_GUI_DEBUG=1 in the environment. */
+    void Debug(const char* fmt, ...)
+    {
+        if(!debug_)
+            return;
+        va_list va;
+        va_start(va, fmt);
+        std::vfprintf(stderr, fmt, va);
+        std::fputc('\n', stderr);
+        va_end(va);
     }
 
     void HandleKey(const SDL_KeyboardEvent& e)
@@ -471,24 +512,74 @@ class App
             case SDL_KEYDOWN:
             case SDL_KEYUP: HandleKey(e.key); break;
             case SDL_MOUSEBUTTONDOWN:
+            {
+                mouse_y_logical_ = float(e.button.y) / mouse_scale_;
+                gui::Hit h       = HitAtMouse(e.button.x, e.button.y);
                 if(e.button.button == SDL_BUTTON_LEFT)
-                    MousePress(HitAtMouse(e.button.x, e.button.y));
+                    MousePress(h);
+                else if(h.kind == gui::HitKind::Knob)
+                {
+                    // right or middle button holds the encoder's push switch down
+                    held_push_enc_ = h.index;
+                    input_.MouseEncoder(h.index, true);
+                    Debug("push hold enc=%d", h.index);
+                }
                 break;
+            }
             case SDL_MOUSEBUTTONUP:
                 if(e.button.button == SDL_BUTTON_LEFT)
                     MouseRelease();
+                else if(held_push_enc_ >= 0)
+                {
+                    input_.MouseEncoder(held_push_enc_, false);
+                    held_push_enc_ = -1;
+                }
                 break;
-            case SDL_MOUSEMOTION: ui_.hover = HitAtMouse(e.motion.x, e.motion.y); break;
+            case SDL_MOUSEMOTION:
+                mouse_y_logical_ = float(e.motion.y) / mouse_scale_;
+                ui_.hover        = HitAtMouse(e.motion.x, e.motion.y);
+                if(drag_enc_ >= 0 && (e.motion.state & SDL_BUTTON_LMASK))
+                {
+                    // dragging up turns clockwise, kDragPixelsPerDetent per detent
+                    float dy    = drag_start_y_ - mouse_y_logical_;
+                    int   total = int(dy / kDragPixelsPerDetent);
+                    if(std::fabs(dy) > 3.f)
+                        dragged_ = true;
+                    if(total != drag_emitted_)
+                    {
+                        Turn(drag_enc_, total - drag_emitted_);
+                        Debug("drag enc=%d detents=%+d", drag_enc_, total - drag_emitted_);
+                        drag_emitted_ = total;
+                    }
+                }
+                break;
             case SDL_MOUSEWHEEL:
             {
                 int mx = 0, my = 0;
                 SDL_GetMouseState(&mx, &my);
                 gui::Hit h = HitAtMouse(mx, my);
-                int      d = e.wheel.y;
+                if(h.kind != gui::HitKind::Knob)
+                    break;
+                // Trackpads and Magic Mice deliver fractional deltas, and the integer
+                // fields are often 0 for them: accumulate and emit whole detents.
+                // Horizontal scrolling turns too, so two-finger swipes work.
+#if SDL_VERSION_ATLEAST(2, 0, 18)
+                float d = e.wheel.preciseY + e.wheel.preciseX;
+#else
+                float d = float(e.wheel.y + e.wheel.x);
+#endif
                 if(e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED)
                     d = -d;
-                if(h.kind == gui::HitKind::Knob)
-                    Turn(h.index, d);
+                float& acc = wheel_accum_[size_t(h.index)];
+                acc += d;
+                int det = int(acc); // whole detents only, remainder carries over
+                if(det != 0)
+                {
+                    det = std::max(-3, std::min(3, det));
+                    acc -= float(det);
+                    Turn(h.index, det);
+                    Debug("wheel enc=%d detents=%+d", h.index, det);
+                }
                 break;
             }
             case SDL_WINDOWEVENT:
@@ -534,9 +625,11 @@ class App
             frames++;
             Uint64    frameStart = SDL_GetPerformanceCounter();
             double    elapsed    = double(frameStart - t0) / double(freq);
+            now_s_ = elapsed;
             SDL_Event e;
             while(SDL_PollEvent(&e))
                 HandleEvent(e);
+            ServiceTimedPush();
 
             UpdateStatus();
             panel_->Draw(ui_);
@@ -583,6 +676,17 @@ class App
     Input                       input_;
     gui::Hit                    mouse_hit_;
     int                         last_small_knob_ = ENC_SW4;
+    float                       mouse_y_logical_ = 0.f;
+    int                         drag_enc_        = -1;
+    float                       drag_start_y_    = 0.f;
+    int                         drag_emitted_    = 0;
+    bool                        dragged_         = false;
+    int                         held_push_enc_   = -1;
+    float                       wheel_accum_[kNumEncoders] = {};
+    double                      now_s_           = 0;
+    double                      push_release_at_ = 0;
+    int                         push_enc_        = -1;
+    bool                        debug_           = std::getenv("CHOMPI_SIM_GUI_DEBUG") != nullptr;
     std::deque<std::string>     log_;
 };
 

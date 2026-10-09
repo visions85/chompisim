@@ -158,57 +158,51 @@ Rgb Glow(Rgb c, Rgb base)
 
 void RenderPanel(const std::string& path)
 {
+    // Geometry from the Rev4 board file (mm, EAGLE y up), 3.4 px per mm.
     Sim&  sim = Sim::Get();
-    Image im(1120, 400);
-    im.Rect(0, 0, im.w, im.h, Rgb{28, 28, 32});
-    // knobs: transport, pitch, A, B, C, volume
-    const int knob_x[6]   = {90, 330, 430, 530, 630, 1030};
-    const int knob_led[6] = {PANEL_LED_TRANSPORT_KNOB, PANEL_LED_PITCH_KNOB, PANEL_LED_KNOB_A, PANEL_LED_KNOB_B, PANEL_LED_KNOB_C, PANEL_LED_VOLUME_KNOB};
-    const int knob_r[6]   = {46, 26, 26, 26, 26, 30};
-    for(int i = 0; i < 6; i++)
-    {
-        Rgb led = sim.PanelLed(knob_led[i]);
-        im.Circle(knob_x[i], 90, knob_r[i] + 8, Glow(led, Rgb{40, 40, 44}));
-        im.Circle(knob_x[i], 90, knob_r[i], Rgb{70, 60, 90});
-    }
-    // indicators, play, loop, chompi
-    const int ind_x[2] = {190, 220};
-    for(int i = 0; i < 2; i++)
-        im.Circle(ind_x[i], 70, 6, Glow(sim.PanelLed(PANEL_LED_INDICATOR_A + i), Rgb{30, 30, 30}));
-    im.Rect(170, 100, 50, 30, Glow(sim.PanelLed(PANEL_LED_PLAY), Rgb{60, 60, 60}));
-    im.Rect(230, 100, 50, 30, Glow(sim.PanelLed(PANEL_LED_LOOP), Rgb{60, 60, 60}));
-    im.Rect(760, 60, 120, 60, sim.ButtonPressed(KEY_CHOMPI) ? Rgb{120, 90, 160} : Rgb{90, 70, 120});
-    im.Rect(920, 70, 20, 50, Rgb{50, 50, 50});
-    im.Rect(922, sim.ToggleDown() ? 95 : 72, 16, 23, Rgb{200, 200, 200});
-    // keybed
-    const int kb_x = 40, kb_y = 160, white_w = 68, white_h = 220, black_w = 40, black_h = 130;
-    int       white_idx = 0;
-    static const bool is_black[25] = {0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0};
+    Image im(1120, 360);
+    auto  X   = [](float mm) { return int(16 + mm * 3.4f); };
+    auto  Y   = [](float mm) { return int(14 + (99.68f - mm) * 3.4f); };
+    im.Rect(0, 0, im.w, im.h, Rgb{232, 226, 212});
+    static const float key_x[25]   = {22.91f, 32.95f, 43.02f, 53.07f, 63.13f, 83.24f, 93.29f, 103.35f, 113.40f,
+                                      123.46f, 133.51f, 143.57f, 163.68f, 173.73f, 183.79f, 193.84f, 203.91f, 224.02f,
+                                      234.07f, 244.13f, 254.18f, 264.24f, 274.29f, 284.35f, 304.46f};
+    static const bool  key_upper[25] = {0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 0};
+    const int          cap           = int(18.2f * 3.4f);
     for(int k = 0; k < 25; k++)
     {
-        if(is_black[k])
-            continue;
-        int  x = kb_x + white_idx * (white_w + 4);
-        bool p = sim.ButtonPressed(kPianoKeys[k]);
-        im.Rect(x, kb_y, white_w, white_h, p ? Rgb{200, 200, 210} : Rgb{235, 235, 240});
-        im.Circle(x + white_w / 2, kb_y + white_h - 40, 16, Glow(sim.KeyLed(kPianoKeyLed[k]), Rgb{40, 40, 40}));
-        white_idx++;
-    }
-    white_idx = 0;
-    for(int k = 0; k < 25; k++)
-    {
-        if(!is_black[k])
+        Rgb  led  = sim.KeyLed(kPianoKeyLed[k]);
+        bool p    = sim.ButtonPressed(kPianoKeys[k]);
+        Rgb  base = key_upper[k] ? Rgb{214, 211, 203} : Rgb{248, 247, 242};
+        if(p)
+            base = Rgb{uint8_t(base.r - 30), uint8_t(base.g - 30), uint8_t(base.b - 30)};
+        float b = std::max({led.r, led.g, led.b}) / 255.f;
+        if(b > 0)
         {
-            white_idx++;
-            continue;
+            auto mix = [b](uint8_t a, uint8_t l) { return uint8_t(a * (1 - 0.9f * b) + (l / b) * 0.9f * b); };
+            base = Rgb{mix(base.r, led.r), mix(base.g, led.g), mix(base.b, led.b)};
         }
-        int  x = kb_x + white_idx * (white_w + 4) - black_w / 2 - 2;
-        bool p = sim.ButtonPressed(kPianoKeys[k]);
-        im.Rect(x, kb_y, black_w, black_h, p ? Rgb{60, 60, 70} : Rgb{20, 20, 25});
-        im.Circle(x + black_w / 2, kb_y + black_h - 30, 12, Glow(sim.KeyLed(kPianoKeyLed[k]), Rgb{30, 30, 30}));
+        im.Rect(X(key_x[k]) - cap / 2, Y(key_upper[k] ? 36.56f : 16.56f) - cap / 2, cap, cap, base);
     }
+    struct F { int button; float x; } fk[3] = {{KEY_CHOMPI, 43.03f}, {KEY_PLAY, 244.14f}, {KEY_LOOP, 264.26f}};
+    for(auto& f : fk)
+        im.Rect(X(f.x) - cap / 2, Y(65.92f) - cap / 2, cap, cap, sim.ButtonPressed(f.button) ? Rgb{200, 192, 176} : Rgb{238, 232, 218});
+    struct K { float x, y, r; bool big; } knobs[6] = {{69.39f, 68.46f, 8.5f, false}, {102.90f, 68.46f, 8.5f, false},
+                                                     {136.42f, 68.46f, 8.5f, false}, {169.94f, 68.46f, 8.5f, false},
+                                                     {210.09f, 68.85f, 15.5f, true}, {300.65f, 68.46f, 8.5f, false}};
+    for(auto& k : knobs)
+        im.Circle(X(k.x), Y(k.y), int(k.r * 3.4f), k.big ? Rgb{112, 80, 176} : Rgb{58, 59, 66});
+    struct L { float x, y, r; } leds[kNumPanelLeds] = {{39.22f, 89.55f, 4}, {69.38f, 89.55f, 4}, {102.90f, 89.55f, 4},
+                                                       {136.42f, 89.55f, 4}, {169.94f, 89.55f, 4}, {200.11f, 91.86f, 2.5f},
+                                                       {220.22f, 91.86f, 2.5f}, {240.33f, 91.86f, 2.5f}, {260.44f, 91.86f, 2.5f},
+                                                       {300.65f, 89.55f, 4}};
+    for(int i = 0; i < kNumPanelLeds; i++)
+        im.Circle(X(leds[i].x), Y(leds[i].y), int(leds[i].r * 3.4f), Glow(sim.PanelLed(i), Rgb{150, 144, 132}));
+    im.Rect(X(18.38f) - 8, Y(68.46f) - 23, 16, 46, Rgb{58, 56, 52});
+    im.Rect(X(18.38f) - 12, sim.ToggleDown() ? Y(68.46f) + 4 : Y(68.46f) - 22, 24, 18, Rgb{236, 234, 228});
     im.Save(path);
 }
+
 } // namespace
 
 int main(int argc, char** argv)

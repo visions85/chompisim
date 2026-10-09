@@ -75,12 +75,17 @@ three firmwares run the same on both systems.
 
 ## The window
 
+The layout follows the Rev4 board file: every key socket, encoder, LED and
+the mode switch is drawn where the board puts it.
+
 ```
- [TRANSPORT]  o o  [PLAY] [LOOP]   [PITCH] [A] [B] [C]      [CHOMPI]  mode   [VOLUME]
- ┌──┬─┬──┬─┬──┬──┬─┬──┬─┬──┬─┬──┬──┬─┬──┬─┬──┬──┬─┬──┬─┬──┬─┬──┬──┐
- │  │▓│  │▓│  │  │▓│  │▓│  │▓│  │  │▓│  │▓│  │  │▓│  │▓│  │▓│  │  │   25 keys, one LED each
- └──┴─┴──┴─┴──┴──┴─┴──┴─┴──┴─┴──┴──┴─┴──┴─┴──┴──┴─┴──┴─┴──┴─┴──┴──┘
+  o        o        o        o        o      o   (  )   o   o        o       <- panel LEDs
+ mode  [CHOMPI]  (PITCH)   (A)      (B)      (C)   (TRANSPORT)  [PLAY] [LOOP]  (VOLUME)
+       [s] [d]      [g] [h] [j]      [2] [3]      [5] [6] [7]                  <- upper row of caps
+     [z] [x] [c] [v] [b] [n] [m] [q] [w] [e] [r] [t] [y] [u] [i]               <- lower row of caps
 ```
+
+Each key cap is lit by the LED under it. No artwork or logos are reproduced.
 
 | Control | Computer |
 |---|---|
@@ -89,7 +94,7 @@ three firmwares run the same on both systems.
 | PLAY / LOOP / CHOMPI | Space / Return / Left Shift (hold) |
 | Mode toggle switch | Tab (latches), or click it |
 | Any key or button | click it with the mouse |
-| Knobs | mouse wheel over the knob turns it one detent per notch; click to push it |
+| Knobs | drag up or down on the knob, or scroll over it (mouse wheel or trackpad); a click pushes the encoder, the right button holds it down |
 | Transport knob / volume knob | `[` `]` / `-` `=` |
 | Last touched small knob | Left / Right arrows |
 | Push encoders SW1 to SW6 | F1 to F6 |

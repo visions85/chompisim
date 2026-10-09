@@ -66,19 +66,21 @@ constexpr Button kPianoKeys[25] = {
 constexpr int kPianoKeyLed[25] = {24, 0, 23, 1, 22, 21, 2, 20, 3, 19, 4, 18, 17,
                                   5,  16, 6, 15, 14, 7, 13, 8, 12, 9, 11, 10};
 
-/** Which panel LED (PTH chain index) belongs to what. */
+/** Which panel LED (PTH chain index) belongs to what. Chain index i is the
+ *  board's LED(i+1); positions come from the Rev4 board file. */
 enum PanelLed : int
 {
-    PANEL_LED_TRANSPORT_KNOB = 0, /**< big knob, physical SW5 */
-    PANEL_LED_PITCH_KNOB     = 1, /**< physical SW4 (logical knob 0) */
-    PANEL_LED_KNOB_A         = 2, /**< physical SW1 (logical knob 1) */
-    PANEL_LED_KNOB_B         = 3, /**< physical SW2 (logical knob 2) */
-    PANEL_LED_KNOB_C         = 4, /**< physical SW3 (logical knob 3) */
-    PANEL_LED_INDICATOR_A    = 5, /**< small LED, tempo / division */
-    PANEL_LED_INDICATOR_B    = 6, /**< small LED, tempo / division */
-    PANEL_LED_PLAY           = 7,
-    PANEL_LED_LOOP           = 8,
-    PANEL_LED_VOLUME_KNOB    = 9, /**< physical SW6 (logical knob 5) */
+    PANEL_LED_CHOMPI_KEY  = 0, /**< 8 mm LED above the CHOMPI key (also lit for transport knob pushes) */
+    PANEL_LED_PITCH_KNOB  = 1, /**< 8 mm LED above physical SW4 (logical knob 0) */
+    PANEL_LED_KNOB_A      = 2, /**< 8 mm LED above physical SW1 (logical knob 1) */
+    PANEL_LED_KNOB_B      = 3, /**< 8 mm LED above physical SW2 (logical knob 2) */
+    PANEL_LED_KNOB_C      = 4, /**< 8 mm LED above physical SW3 (logical knob 3) */
+    PANEL_LED_INDICATOR_A = 5, /**< 5 mm LED left of the transport knob: tempo / clock division */
+    PANEL_LED_INDICATOR_B = 6, /**< 5 mm LED right of the transport knob: tempo / clock division */
+    PANEL_LED_PLAY        = 7, /**< 5 mm LED above the PLAY key */
+    PANEL_LED_LOOP        = 8, /**< 5 mm LED above the LOOP key */
+    PANEL_LED_VOLUME_KNOB = 9, /**< 8 mm LED above physical SW6 (logical knob 5) */
+    PANEL_LED_TRANSPORT_KNOB = PANEL_LED_CHOMPI_KEY, /**< old name, kept for compatibility */
 };
 
 /** Physical encoder indices (chompi::Hardware::EncoderId). */

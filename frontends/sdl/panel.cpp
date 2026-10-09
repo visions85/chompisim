@@ -1,6 +1,14 @@
 /** @file panel.cpp
  *  @brief Layout tables, sprite-based drawing helpers and the panel renderer.
  *
+ *  The layout follows the CHOMPI Rev4 top board: every key socket, encoder,
+ *  LED and the mode switch sits where the board file places it (millimetres,
+ *  EAGLE y up), scaled onto the logical canvas. The keys are Cherry MX key
+ *  caps on a 20.11 mm pitch in two rows (the "black" keys are the upper row),
+ *  the four small knobs and the volume knob have their LED just above them,
+ *  the big transport knob is flanked by the two small indicator LEDs, and the
+ *  PLAY / LOOP / CHOMPI keys are MX keys in the top row too.
+ *
  *  Discs, rings and LED halos are drawn by blitting three small white alpha
  *  sprites (generated at start-up) with a colour / alpha modulation, which
  *  gives anti-aliased edges and smooth glow on both the accelerated and the
@@ -23,122 +31,168 @@ namespace
 {
 
 // ---------------------------------------------------------------------------
-// Layout, in logical pixels (window = kPanelW x kPanelH at --scale 1)
+// Board geometry (millimetres, from hardware/hardware-pcb CC_Chompi_Rev4.brd)
+// mapped onto the logical canvas (kPanelW x kPanelH at --scale 1)
 // ---------------------------------------------------------------------------
+constexpr float kMmPx      = 3.4f;   /**< logical pixels per millimetre */
+constexpr float kBoardX    = 16.f;   /**< canvas x of board x = 0 */
+constexpr float kBoardTopY = 14.f;   /**< canvas y of the board's top edge */
+constexpr float kBoardWmm  = 319.75f;
+constexpr float kBoardHmm  = 99.68f;
+
+constexpr float X(float mm)
+{
+    return kBoardX + mm * kMmPx;
+}
+constexpr float Y(float mm)
+{
+    return kBoardTopY + (kBoardHmm - mm) * kMmPx; // EAGLE y points up, the screen down
+}
+
+constexpr float kCapMm   = 18.2f; /**< key cap size (MX, 20.11 mm pitch) */
+constexpr float kCapPx   = kCapMm * kMmPx;
+constexpr float kCapRad  = 7.f;   /**< key cap corner radius */
+constexpr float kKeyLipH = 4.f;   /**< visible side of an unpressed key cap */
+constexpr float kKeyPressDy = 3.f;
+constexpr float kPi      = 3.14159265f;
+
+/** Piano keys by semitone: board socket position and whether it is in the
+ *  upper ("black") row. KEY1..KEY15 lower row, KEY16..KEY25 upper row. */
+struct PianoKeyDef
+{
+    float x_mm, y_mm;
+    bool  upper;
+};
+constexpr PianoKeyDef kPianoGeom[25] = {
+    {22.91f, 16.56f, false},  // KEY1   C
+    {32.95f, 36.56f, true},   // KEY16  C#
+    {43.02f, 16.56f, false},  // KEY2   D
+    {53.07f, 36.56f, true},   // KEY17  D#
+    {63.13f, 16.56f, false},  // KEY3   E
+    {83.24f, 16.56f, false},  // KEY4   F
+    {93.29f, 36.56f, true},   // KEY18  F#
+    {103.35f, 16.56f, false}, // KEY5   G
+    {113.40f, 36.56f, true},  // KEY19  G#
+    {123.46f, 16.56f, false}, // KEY6   A
+    {133.51f, 36.56f, true},  // KEY20  A#
+    {143.57f, 16.56f, false}, // KEY7   B
+    {163.68f, 16.56f, false}, // KEY8   C
+    {173.73f, 36.56f, true},  // KEY21  C#
+    {183.79f, 16.56f, false}, // KEY9   D
+    {193.84f, 36.56f, true},  // KEY22  D#
+    {203.91f, 16.56f, false}, // KEY10  E
+    {224.02f, 16.56f, false}, // KEY11  F
+    {234.07f, 36.56f, true},  // KEY23  F#
+    {244.13f, 16.56f, false}, // KEY12  G
+    {254.18f, 36.56f, true},  // KEY24  G#
+    {264.24f, 16.56f, false}, // KEY13  A
+    {274.29f, 36.56f, true},  // KEY25  A#
+    {284.35f, 16.56f, false}, // KEY14  B
+    {304.46f, 16.56f, false}, // KEY15  C
+};
 
 struct KnobDef
 {
-    int         enc;   /**< Encoder */
-    int         led;   /**< PanelLed of the ring */
+    int         enc;
     const char* label;
-    float       cx, cy, r;
+    float       x_mm, y_mm, r_mm;
+    bool        big;
 };
 constexpr KnobDef kKnobs[] = {
-    {ENC_SW5, PANEL_LED_TRANSPORT_KNOB, "TRANSPORT", 108, 92, 56},
-    {ENC_SW4, PANEL_LED_PITCH_KNOB, "PITCH", 612, 92, 29},
-    {ENC_SW1, PANEL_LED_KNOB_A, "A", 708, 92, 29},
-    {ENC_SW2, PANEL_LED_KNOB_B, "B", 804, 92, 29},
-    {ENC_SW3, PANEL_LED_KNOB_C, "C", 900, 92, 29},
-    {ENC_SW6, PANEL_LED_VOLUME_KNOB, "VOLUME", 1040, 92, 35},
+    {ENC_SW4, "PITCH", 69.39f, 68.46f, 8.5f, false},
+    {ENC_SW1, "A", 102.90f, 68.46f, 8.5f, false},
+    {ENC_SW2, "B", 136.42f, 68.46f, 8.5f, false},
+    {ENC_SW3, "C", 169.94f, 68.46f, 8.5f, false},
+    {ENC_SW5, "TRANSPORT", 210.09f, 68.85f, 15.5f, true}, // SW5 is on the lower board, under this spot
+    {ENC_SW6, "VOLUME", 300.65f, 68.46f, 8.5f, false},
 };
-/** Outer radius of the LED ring around a knob of radius r. */
-float RingRadius(float r)
-{
-    return r * 1.14f + 1.f;
-}
 
 struct FuncKeyDef
 {
-    int         button; /**< Button */
-    int         led;    /**< PanelLed or -1 */
+    int         button;
     const char* label;
-    float       x, y, w, h;
+    float       x_mm, y_mm;
 };
 constexpr FuncKeyDef kFuncKeys[] = {
-    {KEY_PLAY, PANEL_LED_PLAY, "PLAY", 222, 62, 60, 60},
-    {KEY_LOOP, PANEL_LED_LOOP, "LOOP", 296, 62, 60, 60},
-    {KEY_CHOMPI, -1, "CHOMPI", 376, 62, 120, 60},
+    {KEY_CHOMPI, "CHOMPI", 43.03f, 65.92f}, // KEY26
+    {KEY_PLAY, "PLAY", 244.14f, 65.92f},    // KEY27
+    {KEY_LOOP, "LOOP", 264.26f, 65.92f},    // KEY28
 };
 
-struct IndicatorDef
+/** The ten panel LEDs, by PanelLed index (LED1..LED10 on the board). */
+struct PanelLedDef
 {
-    int   led;
-    float cx, cy, r;
+    float x_mm, y_mm, r_mm;
 };
-constexpr IndicatorDef kIndicators[] = {
-    {PANEL_LED_INDICATOR_A, 196, 80, 5},
-    {PANEL_LED_INDICATOR_B, 196, 106, 5},
+constexpr PanelLedDef kPanelLeds[kNumPanelLeds] = {
+    {39.22f, 89.55f, 4.f},   // LED1  above the CHOMPI key
+    {69.38f, 89.55f, 4.f},   // LED2  above PITCH
+    {102.90f, 89.55f, 4.f},  // LED3  above A
+    {136.42f, 89.55f, 4.f},  // LED4  above B
+    {169.94f, 89.55f, 4.f},  // LED5  above C
+    {200.11f, 91.86f, 2.5f}, // LED6  left of the transport knob
+    {220.22f, 91.86f, 2.5f}, // LED7  right of the transport knob
+    {240.33f, 91.86f, 2.5f}, // LED8  above PLAY
+    {260.44f, 91.86f, 2.5f}, // LED9  above LOOP
+    {300.65f, 89.55f, 4.f},  // LED10 above VOLUME
 };
 
+/** Mode switch SW_NORMAL: a vertical slide at the far left of the top row. */
 struct ToggleDef
 {
-    float       cx, cy, w, h; /**< the slot */
-    float       thumb_w, thumb_h;
-    const char* label;
+    float x_mm, y_mm;
+    float w, h, thumb_w, thumb_h; /**< logical pixels */
 };
-constexpr ToggleDef kToggle = {532, 92, 18, 50, 26, 20, "MODE"};
+constexpr ToggleDef kToggle = {18.38f, 68.46f, 16.f, 46.f, 24.f, 18.f};
 
-struct KeybedDef
-{
-    float x, y;
-    float white_w, white_h;
-    float black_w, black_h;
-    float gap; /**< between white keys */
-};
-constexpr KeybedDef kKeybed    = {42, 186, 69, 152, 40, 92, 2};
-constexpr int       kNumWhite  = 15;
-constexpr int       kNumBlack  = 10;
-constexpr int       kWhiteSemis[kNumWhite] = {0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24};
-constexpr int       kBlackSemis[kNumBlack] = {1, 3, 6, 8, 10, 13, 15, 18, 20, 22};
-constexpr float     kKeyLipH   = 4; /**< visible side of an unpressed key cap */
-constexpr float     kPi        = 3.14159265f;
-constexpr float     kKeyPressDy = 3; /**< how far a pressed cap sinks */
-
-constexpr SDL_FRect kBody = {10, 6, 1100, 340}; /**< the instrument enclosure */
+constexpr SDL_FRect kBody = {6, 2, 1108, 348}; /**< the instrument enclosure */
 
 /** Text rows (logical y of the top of the text). */
-constexpr float kHintY1  = 352;
-constexpr float kHintY2  = 362;
-constexpr float kStatusY = 376;
-constexpr float kLogY    = 388;
+constexpr float kHintY1  = 356;
+constexpr float kHintY2  = 366;
+constexpr float kStatusY = 380;
+constexpr float kLogY    = 392;
 constexpr float kLogDy   = 10;
 constexpr float kTextX   = 16;
 
 const char* const kHint1 = "PIANO  z s x d c v g b h n j m = lower octave   q 2 w 3 e r 5 t 6 y 7 u i = upper octave   "
                            "SPACE play   RETURN loop   L-SHIFT chompi (hold)   TAB mode toggle   ESC quit";
-const char* const kHint2 = "KNOBS  mouse wheel = turn   left click = push   [ ] transport   - = volume   "
+const char* const kHint2 = "KNOBS  drag up/down or scroll = turn   click = push   right-click = hold   [ ] transport   - = volume   "
                            "LEFT/RIGHT last small knob   F1-F6 push ENC1-ENC6 (hold)   mouse clicks press keys";
 
 // ---------------------------------------------------------------------------
-// Colours
+// Colours: a cream enclosure with white caps, like the instrument. No artwork
+// or logos are reproduced.
 // ---------------------------------------------------------------------------
-constexpr SDL_Color kBg         = {16, 17, 20, 255};
-constexpr SDL_Color kBodyColor  = {38, 40, 46, 255};
-constexpr SDL_Color kBodyEdge   = {52, 55, 62, 255};
-constexpr SDL_Color kSlot       = {20, 21, 25, 255};
-constexpr SDL_Color kWhiteFace  = {226, 223, 214, 255};
-constexpr SDL_Color kWhiteSide  = {160, 157, 148, 255};
-constexpr SDL_Color kWhiteText  = {96, 94, 90, 255};
-constexpr SDL_Color kBlackFace  = {40, 41, 47, 255};
-constexpr SDL_Color kBlackSide  = {14, 15, 18, 255};
-constexpr SDL_Color kBlackText  = {150, 152, 160, 255};
-constexpr SDL_Color kFuncFace   = {66, 70, 80, 255};
-constexpr SDL_Color kFuncSide   = {30, 32, 38, 255};
-constexpr SDL_Color kFuncText   = {235, 236, 240, 255};
-constexpr SDL_Color kKnobRim    = {78, 82, 92, 255};
-constexpr SDL_Color kKnobRimHot = {120, 126, 140, 255};
-constexpr SDL_Color kKnobBody   = {48, 51, 58, 255};
-constexpr SDL_Color kKnobBodyDn = {34, 36, 42, 255};
-constexpr SDL_Color kPointer    = {236, 236, 240, 255};
-constexpr SDL_Color kLedOff     = {12, 13, 16, 255};
-constexpr SDL_Color kRingOff    = {24, 25, 30, 255};
-constexpr SDL_Color kLabel      = {168, 173, 184, 255};
-constexpr SDL_Color kToggleSlot = {18, 19, 23, 255};
-constexpr SDL_Color kToggleThumb = {200, 198, 190, 255};
-constexpr SDL_Color kToggleGrip = {120, 118, 112, 255};
-constexpr SDL_Color kHintColor  = {104, 110, 124, 255};
+constexpr SDL_Color kBg          = {22, 22, 26, 255};
+constexpr SDL_Color kBodyColor   = {232, 226, 212, 255};
+constexpr SDL_Color kBodyEdge    = {196, 188, 170, 255};
+constexpr SDL_Color kLowerFace   = {226, 224, 217, 255};
+constexpr SDL_Color kLowerSide   = {176, 172, 162, 255};
+constexpr SDL_Color kUpperFace   = {196, 193, 185, 255};
+constexpr SDL_Color kUpperSide   = {146, 142, 132, 255};
+constexpr SDL_Color kKeyText     = {120, 116, 108, 255};
+constexpr SDL_Color kFuncFace    = {238, 232, 218, 255};
+constexpr SDL_Color kFuncSide    = {180, 172, 152, 255};
+constexpr SDL_Color kFuncText    = {70, 66, 60, 255};
+constexpr SDL_Color kKnobRim     = {40, 40, 46, 255};
+constexpr SDL_Color kKnobRimHot  = {90, 92, 104, 255};
+constexpr SDL_Color kKnobBody    = {58, 59, 66, 255};
+constexpr SDL_Color kKnobBodyDn  = {40, 41, 46, 255};
+constexpr SDL_Color kBigRim      = {74, 50, 128, 255};
+constexpr SDL_Color kBigRimHot   = {118, 92, 180, 255};
+constexpr SDL_Color kBigBody     = {112, 80, 176, 255};
+constexpr SDL_Color kBigBodyDn   = {86, 60, 140, 255};
+constexpr SDL_Color kPointer     = {240, 240, 244, 255};
+constexpr SDL_Color kLedLens     = {214, 208, 196, 255};
+constexpr SDL_Color kLedLensEdge = {150, 144, 132, 255};
+constexpr SDL_Color kLabel       = {96, 92, 84, 255};
+constexpr SDL_Color kToggleSlot  = {58, 56, 52, 255};
+constexpr SDL_Color kToggleThumb = {236, 234, 228, 255};
+constexpr SDL_Color kToggleGrip  = {150, 146, 138, 255};
+constexpr SDL_Color kHintColor   = {104, 110, 124, 255};
 constexpr SDL_Color kStatusColor = {170, 176, 188, 255};
-constexpr SDL_Color kLogColor   = {120, 170, 226, 255};
+constexpr SDL_Color kLogColor    = {120, 170, 226, 255};
 
 SDL_Color Scaled(SDL_Color c, float f)
 {
@@ -148,6 +202,16 @@ SDL_Color Scaled(SDL_Color c, float f)
 float Brightness(Rgb c)
 {
     return std::max({c.r, c.g, c.b}) / 255.f;
+}
+/** Key cap face lit from below by its LED: the cap takes the LED's hue. */
+SDL_Color Tint(SDL_Color base, Rgb led, float amount)
+{
+    float b = Brightness(led);
+    if(b <= 0.f)
+        return base;
+    float t = std::clamp(amount * b, 0.f, 1.f);
+    auto  mix = [t](uint8_t a, float l) { return uint8_t(std::clamp(a * (1.f - t) + l * t, 0.f, 255.f)); };
+    return SDL_Color{mix(base.r, led.r / b), mix(base.g, led.g / b), mix(base.b, led.b / b), 255};
 }
 
 } // namespace
@@ -160,13 +224,10 @@ class Canvas
   public:
     Canvas(SDL_Renderer* r, float scale) : r_(r), scale_(scale)
     {
-        // Anti-aliased disc, radius kDiscR of a kSprite-sized sprite.
         disc_ = MakeSprite([](float d) { return std::clamp(kDiscR + 0.5f - d, 0.f, 1.f); });
-        // Annulus between kRingInner and kDiscR.
         ring_ = MakeSprite([](float d) {
             return std::clamp(kDiscR + 0.5f - d, 0.f, 1.f) * std::clamp(d - kRingInner + 0.5f, 0.f, 1.f);
         });
-        // Soft halo: alpha falls off to zero at the sprite edge.
         glow_ = MakeSprite([](float d) {
             float t = d / (kSprite / 2.f);
             return t >= 1.f ? 0.f : std::pow(1.f - t, 2.4f);
@@ -206,13 +267,11 @@ class Canvas
         Disc(x + w - rad, y + h - rad, rad, c);
     }
 
-    /** Anti-aliased filled circle. */
     void Disc(float cx, float cy, float r, SDL_Color c)
     {
         Sprite(disc_, cx, cy, r * scale_ * (kSprite / 2.f) / kDiscR, c, SDL_BLENDMODE_BLEND);
     }
 
-    /** Ring with outer radius r (inner radius 0.8 r). */
     void Ring(float cx, float cy, float r, SDL_Color c)
     {
         Sprite(ring_, cx, cy, r * scale_ * (kSprite / 2.f) / kDiscR, c, SDL_BLENDMODE_BLEND);
@@ -234,9 +293,6 @@ class Canvas
         Sprite(glow_, cx, cy, r * scale_, m, additive ? SDL_BLENDMODE_ADD : SDL_BLENDMODE_BLEND);
     }
 
-    /** Text with font pixel size `px` logical pixels; align -1 left, 0 centre, 1 right of x.
-     *  Font pixels are whole device pixels, rounded down so text never grows
-     *  beyond the room the logical layout gives it at fractional scales. */
     void Text(float x, float y, int px, SDL_Color c, const std::string& s, int align = -1)
     {
         int dpx = std::max(1, int(std::floor(px * scale_)));
@@ -296,149 +352,126 @@ class Canvas
 namespace
 {
 
-int WhiteIndexOf(int semitone)
+SDL_FRect CapRect(float x_mm, float y_mm)
 {
-    for(int i = 0; i < kNumWhite; i++)
-        if(kWhiteSemis[i] == semitone)
-            return i;
-    return -1;
+    return SDL_FRect{X(x_mm) - kCapPx / 2, Y(y_mm) - kCapPx / 2, kCapPx, kCapPx};
 }
-
-SDL_FRect WhiteKeyRect(int i)
+SDL_FRect PianoKeyRect(int semitone)
 {
-    const KeybedDef& k = kKeybed;
-    return SDL_FRect{k.x + i * k.white_w + k.gap / 2, k.y, k.white_w - k.gap, k.white_h};
+    return CapRect(kPianoGeom[semitone].x_mm, kPianoGeom[semitone].y_mm);
 }
-
-SDL_FRect BlackKeyRect(int i)
+SDL_FRect FuncKeyRect(const FuncKeyDef& f)
 {
-    const KeybedDef& k  = kKeybed;
-    int              wi = WhiteIndexOf(kBlackSemis[i] - 1); // white key to the left
-    float            bx = k.x + (wi + 1) * k.white_w - k.black_w / 2;
-    return SDL_FRect{bx, k.y, k.black_w, k.black_h};
+    return CapRect(f.x_mm, f.y_mm);
 }
-
 bool Contains(const SDL_FRect& r, float x, float y)
 {
     return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
 }
-
 SDL_FRect ToggleHitRect()
 {
     const ToggleDef& t = kToggle;
-    return SDL_FRect{t.cx - t.thumb_w / 2 - 4, t.cy - t.h / 2 - 4, t.thumb_w + 8, t.h + 8};
+    return SDL_FRect{X(t.x_mm) - t.thumb_w / 2 - 4, Y(t.y_mm) - t.h / 2 - 4, t.thumb_w + 8, t.h + 8};
 }
 
 // ---------------------------------------------------------------------------
 // Drawing of the individual controls
 // ---------------------------------------------------------------------------
 
-/** A key cap: a top face sitting on a darker side; pressed caps sink and lose the side. */
+/** A key cap: a rounded top face on a darker side; pressed caps sink and lose the side. */
 void DrawKeyCap(Canvas& cv, const SDL_FRect& r, SDL_Color face, SDL_Color side, bool pressed, bool hover)
 {
     float lip = pressed ? 1.f : kKeyLipH;
     float dy  = pressed ? kKeyPressDy : 0.f;
-    cv.FillRect(r.x, r.y + r.h - lip, r.w, lip, side);
-    SDL_Color f = pressed ? Scaled(face, 0.86f) : hover ? Scaled(face, 1.08f) : face;
-    cv.FillRect(r.x, r.y + dy, r.w, r.h - lip - dy, f);
+    cv.RoundRect(r.x, r.y + dy, r.w, r.h - dy, kCapRad, side);
+    SDL_Color f = pressed ? Scaled(face, 0.92f) : hover ? Scaled(face, 1.04f) : face;
+    cv.RoundRect(r.x, r.y + dy, r.w, r.h - lip - dy, kCapRad, f);
 }
 
-/** An LED: a dark lens, the lit colour, and a halo. */
-void DrawLed(Canvas& cv, float cx, float cy, float r, float glowR, Rgb c, bool additiveGlow)
+/** A through-hole LED: a pale lens that takes the LED colour, with a halo on the panel. */
+void DrawLed(Canvas& cv, float cx, float cy, float r, Rgb c)
 {
-    cv.Disc(cx, cy, r, kLedOff);
+    cv.Disc(cx, cy, r + 1.f, kLedLensEdge);
     if(Brightness(c) <= 0.f)
+    {
+        cv.Disc(cx, cy, r, kLedLens);
         return;
+    }
+    cv.Glow(cx, cy, r * 3.2f, c, 0.85f, false);
     cv.Disc(cx, cy, r, SDL_Color{c.r, c.g, c.b, 255});
-    cv.Glow(cx, cy, glowR, c, 0.9f, additiveGlow);
+    cv.Disc(cx - r * 0.3f, cy - r * 0.3f, r * 0.3f, SDL_Color{255, 255, 255, 110});
 }
 
-void DrawKeybed(Canvas& cv, const UiState& st)
+void DrawPianoKeys(Canvas& cv, const UiState& st)
 {
-    const KeybedDef& k = kKeybed;
-    cv.RoundRect(k.x - 6, k.y - 6, kNumWhite * k.white_w + 12, k.white_h + 12, 6, kSlot);
-    for(int i = 0; i < kNumWhite; i++)
+    for(int semi = 0; semi < 25; semi++)
     {
-        int       semi    = kWhiteSemis[i];
-        SDL_FRect r       = WhiteKeyRect(i);
-        bool      pressed = Sim::Get().ButtonPressed(kPianoKeys[semi]);
-        bool      hover   = st.hover == Hit{HitKind::PianoKey, semi};
-        float     dy      = pressed ? kKeyPressDy : 0.f;
-        DrawKeyCap(cv, r, kWhiteFace, kWhiteSide, pressed, hover);
-        DrawLed(cv, r.x + r.w / 2, r.y + r.h - 36 + dy, 7, 28, Sim::Get().KeyLed(kPianoKeyLed[semi]), false);
-        cv.Text(r.x + r.w / 2, r.y + r.h - 20 + dy, 1, kWhiteText, kPianoKeyNames[semi], 0);
-    }
-    for(int i = 0; i < kNumBlack; i++)
-    {
-        int       semi    = kBlackSemis[i];
-        SDL_FRect r       = BlackKeyRect(i);
-        bool      pressed = Sim::Get().ButtonPressed(kPianoKeys[semi]);
-        bool      hover   = st.hover == Hit{HitKind::PianoKey, semi};
-        float     dy      = pressed ? kKeyPressDy : 0.f;
-        DrawKeyCap(cv, r, kBlackFace, kBlackSide, pressed, hover);
-        DrawLed(cv, r.x + r.w / 2, r.y + r.h - 32 + dy, 6, 22, Sim::Get().KeyLed(kPianoKeyLed[semi]), true);
-        cv.Text(r.x + r.w / 2, r.y + r.h - 18 + dy, 1, kBlackText, kPianoKeyNames[semi], 0);
+        const PianoKeyDef& g       = kPianoGeom[semi];
+        SDL_FRect          r       = PianoKeyRect(semi);
+        bool               pressed = Sim::Get().ButtonPressed(kPianoKeys[semi]);
+        bool               hover   = st.hover == Hit{HitKind::PianoKey, semi};
+        Rgb                led     = Sim::Get().KeyLed(kPianoKeyLed[semi]);
+        SDL_Color          face    = Tint(g.upper ? kUpperFace : kLowerFace, led, 0.75f);
+        float              dy      = pressed ? kKeyPressDy : 0.f;
+        float              b       = Brightness(led);
+        if(b > 0.f)
+            cv.Glow(r.x + r.w / 2, r.y + r.h / 2 + dy, r.w * 1.25f, led, 0.55f, true);
+        DrawKeyCap(cv, r, face, g.upper ? kUpperSide : kLowerSide, pressed, hover);
+        if(b > 0.f)
+        {
+            // the cap is lit from below: a bright window of the LED colour, strongest in the middle
+            SDL_Color lit = {uint8_t(led.r / b), uint8_t(led.g / b), uint8_t(led.b / b), uint8_t(120 + 135 * b)};
+            float     in  = 7.f;
+            cv.RoundRect(r.x + in, r.y + in + dy, r.w - 2 * in, r.h - 2 * in - kKeyLipH + (pressed ? 3.f : 0.f), kCapRad - 2, lit);
+            cv.Glow(r.x + r.w / 2, r.y + r.h / 2 + dy, r.w * 0.55f, led, 0.5f, true);
+        }
+        cv.Text(r.x + r.w - 9, r.y + r.h - kKeyLipH - 11 + dy, 1, kKeyText, kPianoKeyNames[semi], 0);
     }
 }
 
 void DrawKnob(Canvas& cv, const KnobDef& k, const UiState& st)
 {
-    float ringR   = RingRadius(k.r);
-    Rgb   led     = Sim::Get().PanelLed(k.led);
+    float cx = X(k.x_mm), cy = Y(k.y_mm), R = k.r_mm * kMmPx;
     bool  pressed = st.knob_pressed[size_t(k.enc)];
     bool  hover   = st.hover == Hit{HitKind::Knob, k.enc};
 
-    // LED ring: dark when off, coloured with a halo when lit.
-    cv.Ring(k.cx, k.cy, ringR, kRingOff);
-    if(Brightness(led) > 0.f)
-    {
-        cv.Ring(k.cx, k.cy, ringR, SDL_Color{led.r, led.g, led.b, 255});
-        cv.Glow(k.cx, k.cy, ringR * 1.75f, led, 0.75f, true);
-    }
+    // shadow, rim, cap; a pushed knob looks smaller and darker
+    float r = pressed ? R * 0.95f : R;
+    cv.Disc(cx + 1.5f, cy + 2.f, r + 1.f, SDL_Color{0, 0, 0, 60});
+    cv.Disc(cx, cy, r, hover ? (k.big ? kBigRimHot : kKnobRimHot) : (k.big ? kBigRim : kKnobRim));
+    cv.Disc(cx, cy, r - 3, pressed ? (k.big ? kBigBodyDn : kKnobBodyDn) : (k.big ? kBigBody : kKnobBody));
 
-    // Body: rim + cap. A pushed knob looks smaller and darker.
-    float r = pressed ? k.r * 0.94f : k.r;
-    cv.Disc(k.cx, k.cy, r, hover ? kKnobRimHot : kKnobRim);
-    cv.Disc(k.cx, k.cy, r - 3, pressed ? kKnobBodyDn : kKnobBody);
-
-    // Position mark: a thick radial line made of overlapping discs.
+    // position mark: a thick radial line made of overlapping discs
     float a  = st.knob_angle[size_t(k.enc)] * kPi / 180.f;
     float sx = std::sin(a), sy = -std::cos(a);
-    float pw = std::max(1.6f, r * 0.06f);
-    for(float t = 0.34f; t <= 0.84f; t += 0.04f)
-        cv.Disc(k.cx + sx * t * r, k.cy + sy * t * r, pw, kPointer);
+    float pw = std::max(1.6f, r * 0.07f);
+    for(float t = 0.38f; t <= 0.86f; t += 0.04f)
+        cv.Disc(cx + sx * t * r, cy + sy * t * r, pw, kPointer);
 
-    cv.Text(k.cx, k.cy + ringR + 7, 2, kLabel, k.label, 0);
-}
-
-void DrawIndicator(Canvas& cv, const IndicatorDef& d)
-{
-    DrawLed(cv, d.cx, d.cy, d.r, d.r * 3.6f, Sim::Get().PanelLed(d.led), true);
+    cv.Text(cx, cy + R + 6, 1, kLabel, k.label, 0);
 }
 
 void DrawFuncKey(Canvas& cv, const FuncKeyDef& f, const UiState& st)
 {
-    SDL_FRect r       = {f.x, f.y, f.w, f.h};
+    SDL_FRect r       = FuncKeyRect(f);
     bool      pressed = Sim::Get().ButtonPressed(f.button);
     bool      hover   = st.hover == Hit{HitKind::FuncKey, f.button};
     float     dy      = pressed ? kKeyPressDy : 0.f;
     DrawKeyCap(cv, r, kFuncFace, kFuncSide, pressed, hover);
-    cv.Text(f.x + f.w / 2, f.y + f.h / 2 - 7 - kKeyLipH / 2 + dy, 2, kFuncText, f.label, 0);
-    if(f.led >= 0)
-        DrawLed(cv, f.x + f.w / 2, f.y - 11, 5, 18, Sim::Get().PanelLed(f.led), true);
+    cv.Text(r.x + r.w / 2, r.y + r.h / 2 - 5 + dy, 1, kFuncText, f.label, 0);
 }
 
 void DrawToggle(Canvas& cv, const UiState& st)
 {
-    const ToggleDef& t    = kToggle;
-    bool             down = Sim::Get().ToggleDown();
+    const ToggleDef& t     = kToggle;
+    float            cx    = X(t.x_mm), cy = Y(t.y_mm);
+    bool             down  = Sim::Get().ToggleDown();
     bool             hover = st.hover == Hit{HitKind::Toggle, 0};
-    cv.RoundRect(t.cx - t.w / 2, t.cy - t.h / 2, t.w, t.h, t.w / 2, kToggleSlot);
-    float ty = down ? t.cy + t.h / 2 - t.thumb_h - 1 : t.cy - t.h / 2 + 1;
-    cv.RoundRect(t.cx - t.thumb_w / 2, ty, t.thumb_w, t.thumb_h, 5,
-                 hover ? Scaled(kToggleThumb, 1.1f) : kToggleThumb);
-    cv.FillRect(t.cx - t.thumb_w / 2 + 6, ty + t.thumb_h / 2 - 1, t.thumb_w - 12, 2, kToggleGrip);
-    cv.Text(t.cx, t.cy + t.h / 2 + 9, 2, kLabel, t.label, 0);
+    cv.RoundRect(cx - t.w / 2, cy - t.h / 2, t.w, t.h, t.w / 2, kToggleSlot);
+    float ty = down ? cy + t.h / 2 - t.thumb_h - 1 : cy - t.h / 2 + 1;
+    cv.RoundRect(cx - t.thumb_w / 2, ty, t.thumb_w, t.thumb_h, 5, hover ? Scaled(kToggleThumb, 1.04f) : kToggleThumb);
+    cv.FillRect(cx - t.thumb_w / 2 + 6, ty + t.thumb_h / 2 - 1, t.thumb_w - 12, 2, kToggleGrip);
+    cv.Text(cx, cy + t.h / 2 + 8, 1, kLabel, "MODE", 0);
 }
 
 void DrawTextArea(Canvas& cv, const UiState& st)
@@ -468,34 +501,30 @@ void Panel::Draw(const UiState& st)
     cv.Clear(kBg);
     cv.RoundRect(kBody.x - 1, kBody.y - 1, kBody.w + 2, kBody.h + 2, 15, kBodyEdge);
     cv.RoundRect(kBody.x, kBody.y, kBody.w, kBody.h, 14, kBodyColor);
-    DrawKeybed(cv, st);
-    for(const KnobDef& k : kKnobs)
-        DrawKnob(cv, k, st);
-    for(const IndicatorDef& d : kIndicators)
-        DrawIndicator(cv, d);
+    DrawPianoKeys(cv, st);
     for(const FuncKeyDef& f : kFuncKeys)
         DrawFuncKey(cv, f, st);
+    for(const KnobDef& k : kKnobs)
+        DrawKnob(cv, k, st);
+    for(int i = 0; i < kNumPanelLeds; i++)
+        DrawLed(cv, X(kPanelLeds[i].x_mm), Y(kPanelLeds[i].y_mm), kPanelLeds[i].r_mm * kMmPx, Sim::Get().PanelLed(i));
     DrawToggle(cv, st);
     DrawTextArea(cv, st);
 }
 
 Hit Panel::HitTest(float x, float y) const
 {
-    // Black keys sit on top of the white keys, so test them first.
-    for(int i = 0; i < kNumBlack; i++)
-        if(Contains(BlackKeyRect(i), x, y))
-            return Hit{HitKind::PianoKey, kBlackSemis[i]};
-    for(int i = 0; i < kNumWhite; i++)
-        if(Contains(WhiteKeyRect(i), x, y))
-            return Hit{HitKind::PianoKey, kWhiteSemis[i]};
+    for(int semi = 0; semi < 25; semi++)
+        if(Contains(PianoKeyRect(semi), x, y))
+            return Hit{HitKind::PianoKey, semi};
     for(const KnobDef& k : kKnobs)
     {
-        float dx = x - k.cx, dy = y - k.cy, rr = RingRadius(k.r) + 2;
+        float dx = x - X(k.x_mm), dy = y - Y(k.y_mm), rr = k.r_mm * kMmPx + 4;
         if(dx * dx + dy * dy <= rr * rr)
             return Hit{HitKind::Knob, k.enc};
     }
     for(const FuncKeyDef& f : kFuncKeys)
-        if(Contains(SDL_FRect{f.x, f.y, f.w, f.h}, x, y))
+        if(Contains(FuncKeyRect(f), x, y))
             return Hit{HitKind::FuncKey, f.button};
     if(Contains(ToggleHitRect(), x, y))
         return Hit{HitKind::Toggle, 0};
