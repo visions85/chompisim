@@ -692,6 +692,86 @@ SDL_FRect InputButtonRect(int i)
     return SDL_FRect{kInputButtonX[i], kTabY, kInputButtonW[i], kTabH};
 }
 
+/** The SOUND menu of a firmware with a sound list (GRAIN): a button in the
+ *  bar after the firmware's name, and a list dropped over the instrument. */
+constexpr float kSoundLabelX = 372.f, kSoundX = 410.f, kSoundW = 142.f;
+constexpr float kSoundRowH = 14.f, kSoundListW = 236.f, kSoundListPad = 3.f;
+
+bool HasSoundMenu(const UiState& st)
+{
+    return FirmwareByName(st.firmware).sound_cc != 0;
+}
+SDL_FRect SoundButtonRect()
+{
+    return SDL_FRect{kSoundX, kTabY, kSoundW, kTabH};
+}
+SDL_FRect SoundRowRect(int i)
+{
+    return SDL_FRect{kSoundX, kBarH + kSoundListPad + i * kSoundRowH, kSoundListW, kSoundRowH};
+}
+
+/** Cuts a text to a width, with "..". */
+std::string Fit(std::string t, float w)
+{
+    if(float(TextWidth(t, 1)) <= w)
+        return t;
+    while(t.size() > 1 && float(TextWidth(t + "..", 1)) > w)
+        t.pop_back();
+    return t + "..";
+}
+
+/** "3  03_cubbi_a3": the sound's number and its name. */
+std::string SoundLabel(const SoundEntry& s, float w)
+{
+    return Fit(std::to_string(s.index + 1) + "  " + s.name, w);
+}
+
+/** A small chevron pointing down (or up) centred on (cx, cy). */
+void DrawChevron(Canvas& cv, float cx, float cy, bool up, SDL_Color c)
+{
+    const float d = up ? -2.f : 2.f;
+    cv.Line(cx - 4, cy - d, cx, cy + d, 1.6f, c);
+    cv.Line(cx, cy + d, cx + 4, cy - d, 1.6f, c);
+}
+
+void DrawSoundButton(Canvas& cv, const UiState& st, SDL_Color accent)
+{
+    cv.Text(kSoundLabelX, kTabY + 5, 1, kHintColor, "SOUND");
+    const SDL_FRect r     = SoundButtonRect();
+    const bool      hover = st.hover == Hit{HitKind::SoundButton, 0};
+    cv.RoundRect(r.x, r.y, r.w, r.h, 4.f, st.sound_menu || hover ? accent : kTabEdge);
+    cv.RoundRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, 3.f, kBarBg);
+    std::string label = st.sound < 0 ? "loading" : std::to_string(st.sound + 1);
+    for(const SoundEntry& s : st.sounds)
+        if(s.index == st.sound)
+            label = SoundLabel(s, r.w - 24);
+    cv.Text(r.x + 6, r.y + 5, 1, st.sound < 0 ? kTabDim : kTabText, label);
+    DrawChevron(cv, r.x + r.w - 9, r.y + r.h / 2, st.sound_menu, kTabText);
+}
+
+/** The dropped-down list: the selected sound in the firmware's colour, the hovered row lighter. */
+void DrawSoundMenu(Canvas& cv, const UiState& st)
+{
+    if(!st.sound_menu || !HasSoundMenu(st))
+        return;
+    const SDL_Color accent = FirmwareByName(st.firmware).accent;
+    const int       n      = int(st.sounds.size());
+    const float     h      = std::max(n, 1) * kSoundRowH + 2 * kSoundListPad;
+    cv.RoundRect(kSoundX - 1, kBarH - 1, kSoundListW + 2, h + 2, 5.f, kMapEdge);
+    cv.RoundRect(kSoundX, kBarH, kSoundListW, h, 4.f, kMapBox);
+    for(int i = 0; i < n; i++)
+    {
+        const SDL_FRect r        = SoundRowRect(i);
+        const bool      selected = st.sounds[i].index == st.sound;
+        const bool      hover    = st.hover == Hit{HitKind::SoundRow, i};
+        if(selected || hover)
+            cv.RoundRect(r.x + 2, r.y, r.w - 4, r.h, 3.f, selected ? accent : kTabEdge);
+        cv.Text(r.x + 8, r.y + 3, 1, selected ? kTabOnText : kMapText, SoundLabel(st.sounds[i], r.w - 16));
+    }
+    if(n == 0)
+        cv.Text(kSoundX + 8, kBarH + kSoundListPad + 3, 1, kTabDim, "no sounds on the card");
+}
+
 /** A bar button: filled with the accent when on, outlined otherwise, dim when it cannot be used. */
 void DrawBarButton(Canvas& cv, const SDL_FRect& r, const char* label, bool on, bool enabled, bool hover, SDL_Color accent)
 {
@@ -716,13 +796,16 @@ void DrawBar(Canvas& cv, const UiState& st)
         bool                built = std::find(st.firmwares_built.begin(), st.firmwares_built.end(), f.id) != st.firmwares_built.end();
         DrawBarButton(cv, TabRect(i), f.name, st.firmware == f.id, built, st.hover == Hit{HitKind::FirmwareTab, i}, f.accent);
     }
+    // the firmware's name and tagline; with a sound list the SOUND menu takes the tagline's place
     const FirmwareInfo& cur = FirmwareByName(st.firmware);
-    std::string         line = cur.name[0] ? std::string(cur.name) + " " + cur.version + "  " + cur.tagline
+    const SDL_Color     accent = cur.name[0] ? cur.accent : SDL_Color{118, 122, 138, 255};
+    std::string         line = cur.name[0] ? std::string(cur.name) + " " + cur.version + (cur.sound_cc ? "" : std::string("  ") + cur.tagline)
                                            : (st.firmware.empty() ? "" : st.firmware + " build");
     cv.Text(TabRect(n - 1).x + kTabW + 14, kTabY + 5, 1, kBarText, line);
+    if(cur.sound_cc)
+        DrawSoundButton(cv, st, accent);
 
     // the inputs: a sound file, the computer's microphone, the aux jack, and a level meter
-    const SDL_Color accent = cur.name[0] ? cur.accent : SDL_Color{118, 122, 138, 255};
     cv.Text(kInputX, kTabY + 5, 1, kHintColor, "INPUT");
     const bool  loaded    = !st.input.name.empty();
     const char* labels[4] = {"LOAD", st.input.playing ? "STOP" : "PLAY", "MIC", st.input.line_in ? "JACK: AUX" : "JACK: MIC"};
@@ -773,15 +856,22 @@ void Panel::Draw(const UiState& st)
         DrawKeyMap(cv, st);
     DrawBar(cv, st);
     DrawTextArea(cv, st);
+    DrawSoundMenu(cv, st);
 }
 
-Hit Panel::HitTest(float x, float y) const
+Hit Panel::HitTest(const UiState& st, float x, float y) const
 {
+    if(st.sound_menu && HasSoundMenu(st))
+        for(int i = 0; i < int(st.sounds.size()); i++)
+            if(Contains(SoundRowRect(i), x, y))
+                return Hit{HitKind::SoundRow, i};
     if(y < kBarH)
     {
         for(int i = 0; i < int(sizeof(kFirmwares) / sizeof(kFirmwares[0])); i++)
             if(Contains(TabRect(i), x, y))
                 return Hit{HitKind::FirmwareTab, i};
+        if(HasSoundMenu(st) && Contains(SoundButtonRect(), x, y))
+            return Hit{HitKind::SoundButton, 0};
         for(int i = 0; i < 4; i++)
             if(Contains(InputButtonRect(i), x, y))
                 return Hit{HitKind::InputButton, i};

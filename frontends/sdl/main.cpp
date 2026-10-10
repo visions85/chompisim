@@ -3,13 +3,16 @@
  *  window, sound card, input mapping and the 60 fps event loop. */
 #include <SDL.h>
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdarg>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <sys/wait.h>
@@ -351,6 +354,77 @@ bool SaveScreenshot(SDL_Renderer* r, const std::string& path)
 }
 
 // ---------------------------------------------------------------------------
+// The sounds on the card, listed the way the GRAIN firmware loads them, so a
+// row of the sound menu is the sound of that number in the firmware
+// ---------------------------------------------------------------------------
+
+/** True for a WAV the firmware takes: 48 kHz 16-bit PCM, mono or stereo, the
+ *  data chunk inside the first 4 KB (GrainEngine.h, ReadWavInfo). */
+bool GrainWavOk(const std::filesystem::path& path)
+{
+    std::ifstream f(path, std::ios::binary);
+    unsigned char head[4096];
+    f.read(reinterpret_cast<char*>(head), sizeof head);
+    const size_t br = size_t(std::max<std::streamsize>(f.gcount(), 0));
+    if(br < 12 || std::memcmp(head, "RIFF", 4) != 0 || std::memcmp(head + 8, "WAVE", 4) != 0)
+        return false;
+    auto u16 = [&](size_t at) { return unsigned(head[at]) | unsigned(head[at + 1]) << 8; };
+    auto u32 = [&](size_t at) { return uint32_t(u16(at)) | uint32_t(u16(at + 2)) << 16; };
+    unsigned format = 0, channels = 0, bits = 0;
+    uint32_t rate = 0;
+    bool     data = false;
+    for(size_t pos = 12; pos + 8 <= br;)
+    {
+        const uint32_t len = u32(pos + 4);
+        if(std::memcmp(head + pos, "fmt ", 4) == 0 && len >= 16 && pos + 24 <= br)
+        {
+            format   = u16(pos + 8);
+            channels = u16(pos + 10);
+            rate     = u32(pos + 12);
+            bits     = u16(pos + 22);
+            if(format == 0xFFFE && len >= 26 && pos + 34 <= br)
+                format = u16(pos + 32);
+        }
+        else if(std::memcmp(head + pos, "data", 4) == 0)
+        {
+            data = true;
+            break;
+        }
+        pos += 8 + size_t(len) + (len & 1);
+    }
+    return data && format == 1 && bits == 16 && rate == 48000 && (channels == 1 || channels == 2);
+}
+
+/** The card's sounds in the firmware's order: the first `limit` .wav files by
+ *  name (TAPE's _double copies left out) with a header the firmware accepts. */
+std::vector<gui::SoundEntry> ScanCardSounds(const std::string& dir, int limit)
+{
+    std::vector<std::string> names;
+    std::error_code          ec;
+    for(const auto& e : std::filesystem::directory_iterator(dir, ec))
+    {
+        const std::string n = e.path().filename().string();
+        if(n.size() < 5 || n[0] == '.' || n.find("_double") != std::string::npos)
+            continue;
+        std::string ext = n.substr(n.size() - 4);
+        for(char& c : ext)
+            c = char(std::tolower(static_cast<unsigned char>(c)));
+        if(ext == ".wav")
+            names.push_back(n);
+    }
+    std::sort(names.begin(), names.end());
+    std::vector<gui::SoundEntry> out;
+    for(const std::string& n : names)
+    {
+        if(int(out.size()) >= limit)
+            break;
+        if(GrainWavOk(std::filesystem::path(dir) / n))
+            out.push_back({int(out.size()), n.substr(0, n.size() - 4)});
+    }
+    return out;
+}
+
+// ---------------------------------------------------------------------------
 // The application
 // ---------------------------------------------------------------------------
 class App
@@ -363,6 +437,16 @@ class App
         ui_.card_name = std::filesystem::path(o.card).filename().string();
         exe_dir_      = ExecutableDir(o.argv0.c_str());
         ui_.firmwares_built = AvailableFirmwares(exe_dir_, "chompi-sim-gui");
+
+        // the sound menu, for a firmware that selects sounds over MIDI
+        const gui::FirmwareInfo& fw = gui::FirmwareByName(ui_.firmware);
+        sound_cc_                   = fw.sound_cc;
+        if(sound_cc_)
+        {
+            ui_.sounds = ScanCardSounds(o.card, fw.record_sound >= 0 ? fw.record_sound : 128);
+            if(fw.record_sound >= 0)
+                ui_.sounds.push_back({fw.record_sound, "recording (CHOMPI key)"});
+        }
     }
 
     /** Reboots into another firmware: the matching executable next to this
@@ -553,6 +637,61 @@ class App
         }
     }
 
+    /** The firmware reported its selected sound (CC sound_cc_ on its MIDI output). */
+    void SoundReported(int index, int channel)
+    {
+        sound_ch_ = channel;
+        if(index == ui_.sound)
+            return;
+        ui_.sound        = index;
+        std::string name = std::to_string(index + 1);
+        for(const gui::SoundEntry& s : ui_.sounds)
+            if(s.index == index)
+                name += ": " + s.name;
+        log_.push_back("sound " + name);
+        Debug("sound reported %d", index);
+    }
+
+    /** A row of the sound menu: the choice goes to the firmware as a CC on its
+     *  MIDI input, on the channel it reports on; the menu shows the result once
+     *  the firmware reports it back. */
+    void SelectSound(int row)
+    {
+        ui_.sound_menu = false;
+        if(row < 0 || row >= int(ui_.sounds.size()))
+            return;
+        const uint8_t msg[3] = {uint8_t(0xB0 | (sound_ch_ & 0x0F)), uint8_t(sound_cc_), uint8_t(ui_.sounds[row].index & 0x7F)};
+        Sim::Get().MidiIn(msg, 3);
+        Debug("select sound %d", ui_.sounds[row].index);
+    }
+
+    /** Follows the firmware's MIDI output: the selected sound comes back as a CC.
+     *  Both ports are drained every frame so their bytes do not pile up. */
+    void PollMidiOut()
+    {
+        for(uint8_t b : Sim::Get().TakeMidiOut())
+        {
+            if(b >= 0xF8) // realtime bytes (clock, start, stop) pass between the others
+                continue;
+            if(b & 0x80)
+            {
+                midi_status_ = b;
+                midi_n_      = 0;
+                continue;
+            }
+            if(midi_n_ < 2)
+                midi_data_[midi_n_++] = b;
+            const int kind = midi_status_ & 0xF0;
+            const int need = midi_status_ >= 0xF0 ? 0 : (kind == 0xC0 || kind == 0xD0) ? 1 : 2;
+            if(need == 0 || midi_n_ < need)
+                continue;
+            midi_n_ = 0; // running status: more data bytes make more messages
+            if(sound_cc_ && kind == 0xB0 && midi_data_[0] == sound_cc_)
+                SoundReported(midi_data_[1], midi_status_ & 0x0F);
+        }
+        Sim::Get().TakeUsbMidiOut();
+    }
+
     bool InitVideo()
     {
         if(SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0)
@@ -685,12 +824,17 @@ class App
 
     gui::Hit HitAtMouse(int wx, int wy) const
     {
-        return panel_->HitTest(float(wx) / mouse_scale_, float(wy) / mouse_scale_);
+        return panel_->HitTest(ui_, float(wx) / mouse_scale_, float(wy) / mouse_scale_);
     }
 
     void MousePress(const gui::Hit& h)
     {
         MouseRelease(); // only one control at a time
+        if(ui_.sound_menu && h.kind != gui::HitKind::SoundRow && h.kind != gui::HitKind::SoundButton)
+        {
+            ui_.sound_menu = false; // a click anywhere else just closes the menu
+            return;
+        }
         mouse_hit_ = h;
         switch(h.kind)
         {
@@ -708,6 +852,8 @@ class App
             case gui::HitKind::Toggle: Sim::Get().SetToggle(!Sim::Get().ToggleDown()); break;
             case gui::HitKind::FirmwareTab: SwitchFirmware(h.index); break;
             case gui::HitKind::InputButton: InputButton(h.index); break;
+            case gui::HitKind::SoundButton: ui_.sound_menu = !ui_.sound_menu; break;
+            case gui::HitKind::SoundRow: SelectSound(h.index); break;
             case gui::HitKind::None: break;
         }
     }
@@ -809,7 +955,12 @@ class App
                 Touch(e2);
         }
         else if(k == SDLK_ESCAPE && down)
-            running_ = false;
+        {
+            if(ui_.sound_menu)
+                ui_.sound_menu = false;
+            else
+                running_ = false;
+        }
     }
 
     void HandleEvent(const SDL_Event& e)
@@ -909,12 +1060,11 @@ class App
 
     void UpdateStatus()
     {
+        PollMidiOut();
         for(std::string& line : Sim::Get().TakeLog())
-        {
             log_.push_back(std::move(line));
-            while(log_.size() > kLogLines)
-                log_.pop_front();
-        }
+        while(log_.size() > kLogLines)
+            log_.pop_front();
         ui_.log.assign(log_.begin(), log_.end());
         for(int i = 0; i < kNumEncoders; i++)
             ui_.knob_pressed[size_t(i)] = input_.EncoderPressed(i);
@@ -1024,6 +1174,11 @@ class App
     double                      now_s_           = 0;
     double                      push_release_at_ = 0;
     int                         push_enc_        = -1;
+    int                         sound_cc_        = 0; /**< the firmware's sound select CC, 0 = none */
+    int                         sound_ch_        = 0; /**< MIDI channel the firmware reports on */
+    uint8_t                     midi_status_     = 0; /**< MIDI output parser: running status and data bytes */
+    uint8_t                     midi_data_[2]    = {};
+    int                         midi_n_          = 0;
     bool                        debug_           = std::getenv("CHOMPI_SIM_GUI_DEBUG") != nullptr;
     std::deque<std::string>     log_;
 };

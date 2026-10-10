@@ -65,6 +65,7 @@ uint32_t pret, sd_checkt;
 bool booting = true;
 bool rainbow_done = false;
 bool testSDLoaded;
+int last_sound_sent = -1; // the sound last reported on CC 32
 bool loading_screen = true;
 size_t loading_screen_time = 0;
 
@@ -249,6 +250,14 @@ void MainLoop(void* data)
         ui.DoEvents();
         //ui.ProcessMidi();
         uit = now;
+    }
+
+    // the selected sound goes out as CC 32 whenever it changes (menu, recording,
+    // MIDI), so a controller or the simulator's sound menu can follow it
+    if (testSDLoaded && engine.getSound() != last_sound_sent)
+    {
+        last_sound_sent = engine.getSound();
+        hw.SendCC(options.midi_ch_out, 32, last_sound_sent);
     }
 
     if (now - pre_startt > 1000) {

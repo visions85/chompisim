@@ -1,0 +1,14 @@
+# GRAIN: pick sounds over MIDI. Program change or CC 32 selects a sound by number; the
+# firmware reports the selection on CC 32 (see it with --trace: B0 20 00 after loading,
+# then 03, 05 and 00; the two unloadable choices are ignored).
+#   chompi-sim-grain --card <card made by scripts/make-grain-card.py> --seconds 15.5 --script examples/grain-sounds.txt --trace --wav out.wav
+9.0  midi B0 20 03        # CC 32: sound 4
+9.5  note 12 1.0
+11.0 midi C0 05           # program change: sound 6
+11.5 note 12 1.0
+13.0 midi B0 20 7F        # out of range: ignored
+13.2 midi B0 20 0E        # the recording slot, still empty: ignored
+13.5 toggle down          # in the menu CC 32 still works
+13.7 midi B0 20 00        # sound 1
+14.0 toggle up
+14.2 note 12 1.0

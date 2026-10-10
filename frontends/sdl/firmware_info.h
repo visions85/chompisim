@@ -22,6 +22,8 @@ struct FirmwareInfo
     const char* menu_black[10];  /**< the black keys, left to right, in the menu (mode switch down + CHOMPI) */
     const char* menu_white;      /**< the white keys in the menu, numbered 1..14 */
     const char* menu_white15;    /**< the fifteenth white key in the menu */
+    int         sound_cc;        /**< MIDI CC that selects a sound by number and reports the selection (0: no sound list) */
+    int         record_sound;    /**< the sound the firmware records into; the card's sounds fill the slots below it (-1: none) */
 };
 
 /** The firmwares the panel knows; FirmwareByName() falls back to a plain entry. */

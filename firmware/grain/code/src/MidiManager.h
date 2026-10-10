@@ -86,19 +86,36 @@ class MidiManager {
                     engine_->request_fifo.PushBack(req);
                 }
                 break;
+                // A program change picks one of the loaded sounds by number (0 = the
+                // first on the card, 14 = the recording); the selection is reported
+                // back on CC 32 from the main loop
+                case ProgramChange:
+                {
+                    if (engine_->soundLoaded(event.data[0]))
+                        engine_->selectSound(event.data[0]);
+                }
+                break;
                 // CC-in is disabled while the menu is open so CC traffic can't fight
                 // with menu navigation. CC 20-25 map to the 6 knobs
                 // CC 14/15 are treated as two extra keys
+                // CC 32 selects a sound like a program change (the menu does not mind)
                 case ControlChange:
                 {
                     if (!midi_cc_in) {
                         break;
                     }
-                    if (menu_page_->IsActive())
-                        break;
 
                     uint8_t cc = event.data[0];
                     uint8_t val = event.data[1];
+
+                    if (cc == 32)
+                    {
+                        if (engine_->soundLoaded(val))
+                            engine_->selectSound(val);
+                        break;
+                    }
+                    if (menu_page_->IsActive())
+                        break;
 
                     if (cc >= 20 && cc < 26)
                     {

@@ -33,6 +33,8 @@ enum class HitKind
     Toggle,   /**< the mode switch */
     FirmwareTab, /**< index into gui::kFirmwares, in the bar above the instrument */
     InputButton, /**< in the bar: 0 load a sound, 1 play/stop, 2 microphone, 3 aux jack */
+    SoundButton, /**< in the bar: opens and closes the sound menu */
+    SoundRow,    /**< a row of the open sound menu: index into UiState::sounds */
 };
 
 struct Hit
@@ -41,6 +43,13 @@ struct Hit
     int     index = -1;
     bool    operator==(const Hit& o) const { return kind == o.kind && index == o.index; }
     bool    operator!=(const Hit& o) const { return !(*this == o); }
+};
+
+/** A sound the firmware can select: its number in the firmware and a name to show. */
+struct SoundEntry
+{
+    int         index;
+    std::string name;
 };
 
 /** Front-end state the panel needs to draw one frame. */
@@ -56,6 +65,9 @@ struct UiState
     chompi_sim::InputState                       input;           /**< the sound fed to the inputs */
     bool                                         mic_open = false; /**< the computer's microphone feeds the inputs */
     float                                        input_level = 0.f; /**< meter, 0..1 */
+    std::vector<SoundEntry>                      sounds;          /**< the firmware's sounds (firmwares with a sound list) */
+    int                                          sound = -1;      /**< the selected one, as the firmware reports it; -1 = not yet */
+    bool                                         sound_menu = false; /**< the sound menu is dropped down */
     Hit                                          hover;         /**< control under the mouse */
     std::string                                  status;        /**< status line */
     std::vector<std::string>                     log;           /**< last firmware log lines, oldest first */
@@ -74,8 +86,8 @@ class Panel
 
     /** Draws the whole window (does not present). */
     void Draw(const UiState& st);
-    /** Which control is at logical position (x, y). */
-    Hit HitTest(float x, float y) const;
+    /** Which control is at logical position (x, y); the state says what the bar holds. */
+    Hit HitTest(const UiState& st, float x, float y) const;
 
   private:
     std::unique_ptr<Canvas> cv_;

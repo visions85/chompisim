@@ -95,7 +95,10 @@ end, verb and delay, tape speed...; TEMPO: grain, clock division...), what
 CHOMPI, PLAY and LOOP do (record, looper, sequencer, pattern), and, when the
 mode switch is down, the menu layer printed on the caps: the black keys' jobs
 (save, copy, erase, banks, inputs, octave, gate...) and the preset or sample
-slot each white key selects. A key map overlay, shown at start
+slot each white key selects. A firmware with a sound list (GRAIN) gets a
+SOUND menu in the bar: the card's sounds and the recording slot, with the
+selected one as the firmware reports it; picking a row sends the choice to
+the firmware over its MIDI input. A key map overlay, shown at start
 and toggled with `/` or `?`, shades the instrument, prints each piano key's
 letter on its cap and draws a description box with an arrow to every switch
 and knob; the arrow-key note moves to whichever small knob was touched last.
@@ -113,6 +116,7 @@ No artwork or logos are reproduced.
 | Last touched small knob | Left / Right arrows |
 | Push encoders SW1 to SW6 | F1 to F6 |
 | Key map overlay | `/` or `?` (toggle; `--no-keymap` starts without it) |
+| Sound menu (GRAIN) | click SOUND in the bar, then a row; Escape or a click elsewhere closes it |
 | Quit | Escape |
 
 The knobs do what the firmware makes them do. In WAVE the PITCH knob is a fine
@@ -125,7 +129,7 @@ Shift`) and press the first black key (`s`) for an octave down or the second
 (`d`) for an octave up.
 
 Command line: `--card DIR` (default `card`), `--cards DIR` (a folder of card
-folders, one per firmware), `--firmware wave|tape|tempo` (launcher), `--no-audio`
+folders, one per firmware), `--firmware wave|tape|tempo|grain` (launcher), `--no-audio`
 (run without a sound card), `--pair 0|1` (send the headphone or the line output
 to the sound card, default line), `--scale F`, `--screenshot FILE.bmp`,
 `--exit-after SECONDS`, `--no-keymap`.
@@ -313,8 +317,18 @@ The menu (mode switch down, CHOMPI) is WAVE's: white keys are presets, the
 black keys octave, gate, the LFO switches, erase, copy and save, A and B set
 attack and release, and the PITCH knob's second page picks the sound.
 
+Over MIDI, a program change or CC 32 picks a sound by number (0 is the first
+on the card, 14 the recording; empty slots are ignored), and the firmware
+sends CC 32 with the selected sound whenever it changes, so a controller can
+follow the menu's knob or a recording. The simulator's SOUND menu in the bar
+is built on that: it lists the card's `.wav` files the way the firmware loads
+them, sends a choice as CC 32 to the firmware's MIDI input and shows what the
+firmware reports back. Both go on the MIDI out channel of the options file,
+so keep the in and out channels alike if you change them.
+
 `examples/grain.txt` plays the first sound, changes the cloud, samples
-`examples/tone.wav` and plays it back. For the hardware, `firmware/grain/code/src`
+`examples/tone.wav` and plays it back; `examples/grain-sounds.txt` picks
+sounds over MIDI. For the hardware, `firmware/grain/code/src`
 builds like WAVE (`make` with the GNU Arm Embedded 10.3 toolchain, with
 `LIBS_DIR` pointing at a CHOMPI `code/libs` folder); it has not been run on a
 device yet, so treat it as a desktop-tested starting point and watch the CPU
