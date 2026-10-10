@@ -55,10 +55,9 @@ struct Options
     bool        tour    = false;    /**< show the guided tour at start */
     bool        no_tour = false;    /**< never show it by itself */
     bool        booted  = false;    /**< the boot window already chose this firmware (set when it relaunches) */
+    double      boot_window = 3.0;  /**< seconds a shared card waits for a key (the bootloader's own window is 2 s) */
     std::string argv0;
 };
-
-constexpr double kBootWindowS = 2.5; /**< the bootloader's window: how long a shared card waits for a key */
 
 constexpr float  kDegreesPerDetent = 15.f; /**< 24 detents per turn */
 constexpr float  kDragPixelsPerDetent = 6.f; /**< mouse drag distance per detent, logical pixels */
@@ -89,6 +88,7 @@ void PrintUsage(const char* argv0)
                 "  --no-tour             never show the tour by itself\n"
                 "  --booted              skip the boot window of a card that holds several firmwares (the\n"
                 "                        window passes this when it relaunches into the chosen one)\n"
+                "  --boot-window <sec>   how long that window waits for a key (default 3)\n"
                 "  --help                this text\n",
                 argv0);
 }
@@ -145,6 +145,12 @@ int ParseArgs(int argc, char** argv, Options& o)
             o.no_tour = true;
         else if(a == "--booted")
             o.booted = true;
+        else if(a == "--boot-window")
+        {
+            if(!value(v))
+                return 1;
+            o.boot_window = std::atof(v);
+        }
         else if(a == "--cards")
         {
             if(!value(v))
@@ -524,6 +530,7 @@ class App
             SaveBootChoice(opt_.card, f.id); // what the bootloader would remember
             args.push_back("--booted");
         }
+        args.insert(args.end(), {"--boot-window", std::to_string(opt_.boot_window)});
         if(!opt_.cards.empty())
             args.insert(args.end(), {"--cards", opt_.cards});
         if(opt_.no_audio)
@@ -581,7 +588,7 @@ class App
 
     void BeginBoot()
     {
-        boot_until_     = kBootWindowS; // Loop() counts from its start
+        boot_until_     = -1; // set by the first frame drawn: the window starts when it can be seen
         ui_.boot_window = true;
         NewBootColour();
         std::string keys;
@@ -605,6 +612,8 @@ class App
     {
         if(!boot_phase_)
             return;
+        if(boot_until_ < 0)
+            boot_until_ = now_s_ + std::max(0.5, opt_.boot_window);
         boot_bright_ += boot_inc_ * float(dt);
         if(boot_bright_ > 1.f)
             boot_inc_ = -boot_inc_;

@@ -128,6 +128,10 @@ if(NOT CHOMPI_SIM_STUB)
     endif()
     set(_staged "${CMAKE_BINARY_DIR}/firmware-staged-${_name}")
     set(CHOMPI_FW_STAGED_${_name} "${_staged}")
+    # a changed firmware source or patch re-runs this configure step, so the staged copy follows a git pull
+    file(GLOB _stage_inputs LIST_DIRECTORIES false "${_src}/*" "${CMAKE_SOURCE_DIR}/firmware/patches/${_name}/*.patch"
+         "${CMAKE_SOURCE_DIR}/scripts/stage-firmware.sh")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_stage_inputs})
     execute_process(
       COMMAND "${CMAKE_SOURCE_DIR}/scripts/stage-firmware.sh" "${_src}" "${_staged}" "${CMAKE_SOURCE_DIR}/firmware/patches/${_name}"
       RESULT_VARIABLE _stage_rc OUTPUT_VARIABLE _stage_out ERROR_VARIABLE _stage_err)

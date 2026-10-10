@@ -49,7 +49,14 @@ cp -R third_party/CHOMPI/firmware/card-profiles cards
 ./build/chompi-sim-gui --cards cards        # the instrument in a window; the bar switches firmware
 ./build/chompi-sim-gui --card cards/wave-1.0 # one card: the firmware is read off the card
 ./build/chompi-sim --card cards/wave-1.0 --seconds 12 --script examples/phrase.txt --wav out.wav
+
+scripts/make-multi-card.py cards/multi      # one card with every firmware on it (see below) ...
+./build/chompi-sim-gui --card cards/multi   # ... hold a white key while it boots to choose
 ```
+
+After a `git pull`, `cmake --build build` is enough: the build re-runs the
+configure step, which copies and patches the firmware sources, whenever a
+firmware source or a patch changed.
 
 `chompi-sim-gui` and `chompi-sim` are launchers: they pick the firmware from
 `--firmware NAME`, else from the firmware binary on the `--card` folder, else
@@ -386,12 +393,15 @@ bootloader's sources):
   caps, which light in their firmware's colour with its name on them (TAPE
   orange, WAVE blue, TEMPO green, GRAIN magenta); for 2.5 seconds a held
   white key, or a click on one of those caps, picks the firmware: 1 TAPE, 2
-  WAVE, 3 TEMPO, 4 GRAIN, and the other caps dim once one is chosen. With no
-  key the window boots what the launcher picked: the last
+  WAVE, 3 TEMPO, 4 GRAIN, and the other caps dim once one is chosen. The
+  window counts from the first frame it draws, 3 seconds by default
+  (`--boot-window SECONDS` changes it; the bootloader's own window is 2
+  seconds). With no key it boots what the launcher picked: the last
   choice, remembered in `boot_choice.txt` in the card's root, else the first
   in that order. Another choice relaunches into that firmware's executable
   with `--booted`, which skips the window; the firmware tabs do the same.
-  `docs/gui-boot.png` shows the window.
+  `docs/gui-boot.png` shows the window. Note that `--cards cards` boots a
+  firmware's own card; a shared card is named with `--card`.
 - The headless runner has no window: `chompi-sim --card DIR` boots the
   remembered choice and `--firmware NAME` any other.
 
