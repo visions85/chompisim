@@ -449,6 +449,9 @@ int main(int argc, char** argv)
         while(next_event < events.size() && events[next_event].t <= t)
             events[next_event++].fn();
         sim.RenderBlock(nullptr, outp);
+        if(!quiet)
+            for(const std::string& line : sim.TakeLog())
+                printf("t=%.3f fw: %s\n", t, line.c_str());
         if(trace)
         {
             // print the LED state and MIDI output whenever they change

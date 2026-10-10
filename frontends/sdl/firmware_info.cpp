@@ -6,7 +6,7 @@
 namespace gui
 {
 
-const FirmwareInfo kFirmwares[3] = {
+const FirmwareInfo kFirmwares[4] = {
     {"wave", "WAVE", "1.0", "wavetable synth + sequencer", {72, 128, 232, 255},
      {{"ATTACK", "PITCH LFO", nullptr},   // A
       {"RELEASE", "FILTER LFO", nullptr}, // B
@@ -37,6 +37,16 @@ const FirmwareInfo kFirmwares[3] = {
      "RECORD", "PATTERN", "LATCH",
      {"JAMMI BANK", "CUBBI BANK", "MIC IN", "AUX IN", "RESAMPLE", "A STATE", "B STATE", "ERASE", "COPY", "SAVE"},
      "SLOT", "CHOMPI"},
+    {"grain", "GRAIN", "0.1", "granular sampler + sequencer", {214, 88, 196, 255},
+     {{"POSITION", "SPRAY", nullptr},
+      {"SIZE", "DENSITY", nullptr},
+      {"TEXTURE", "SPACE", "FILTER"},
+      {"PITCH", "SCAN", nullptr},
+      {"TEMPO", nullptr, nullptr},
+      {"VOLUME", "PAN", nullptr}},
+     "RECORD", "SEQ PLAY", "SEQ LOOP",
+     {"OCT -", "OCT +", "GATE 10%", "GATE 50%", "GATE 100%", "PITCH LFO", "FILT LFO", "ERASE", "COPY", "SAVE"},
+     "PRESET", "DEFAULT"},
 };
 
 const FirmwareInfo& FirmwareByName(const std::string& id)

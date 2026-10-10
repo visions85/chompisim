@@ -675,7 +675,7 @@ void DrawKeyMap(Canvas& cv, const UiState& st)
 // ---------------------------------------------------------------------------
 // Firmware bar: which firmware runs, tabs to switch, the card folder
 // ---------------------------------------------------------------------------
-constexpr float kTabX = 86.f, kTabW = 50.f, kTabH = 18.f, kTabGap = 6.f, kTabY = (kBarH - kTabH) / 2;
+constexpr float kTabX = 86.f, kTabW = 48.f, kTabH = 18.f, kTabGap = 5.f, kTabY = (kBarH - kTabH) / 2;
 
 SDL_FRect TabRect(int i)
 {

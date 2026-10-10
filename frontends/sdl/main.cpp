@@ -433,10 +433,17 @@ class App
             std::fprintf(stderr, "Sim::Init failed: card directory '%s' not found\n", opt_.card.c_str());
             return false;
         }
-        Sim::Get().Start();
-        sim_started_ = true;
         SetupInput();
         return true;
+    }
+
+    /** The firmware boots only once audio, the device's clock, is running. */
+    void StartFirmware()
+    {
+        if(sim_started_)
+            return;
+        Sim::Get().Start();
+        sim_started_ = true;
     }
 
     /** The input sound from --input, and the aux jack. */
@@ -613,6 +620,7 @@ class App
                 std::fprintf(stderr, "%s\n", audio_desc_.c_str());
                 if(opt_.mic)
                     OpenMic();
+                StartFirmware();
                 return;
             }
             std::fprintf(stderr, "SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
@@ -621,6 +629,7 @@ class App
         null_audio_ = true;
         audio_desc_ = "audio none (null clock)";
         std::fprintf(stderr, "running on the null audio clock\n");
+        StartFirmware();
     }
 
     void Shutdown()

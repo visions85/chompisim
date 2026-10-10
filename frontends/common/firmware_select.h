@@ -20,7 +20,7 @@ namespace chompi_sim
 /** The firmwares the simulator knows, in menu order. */
 inline const std::vector<std::string>& KnownFirmwares()
 {
-    static const std::vector<std::string> k = {"wave", "tape", "tempo"};
+    static const std::vector<std::string> k = {"wave", "tape", "tempo", "grain"};
     return k;
 }
 
@@ -63,7 +63,7 @@ inline std::string DetectFirmware(const std::string& card_dir)
     for(const auto& e : std::filesystem::directory_iterator(card_dir, ec))
     {
         std::string n = Lower(e.path().filename().string());
-        if(n.size() < 4 || n.substr(n.size() - 4) != ".bin")
+        if(n.size() < 4 || (n.substr(n.size() - 4) != ".bin" && n.substr(n.size() - 4) != ".txt") || n.rfind("chompi", 0) != 0)
             continue;
         for(const std::string& fw : KnownFirmwares())
             if(n.find(fw) != std::string::npos)

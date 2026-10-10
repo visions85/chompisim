@@ -18,6 +18,7 @@ Status: all three factory firmwares boot from their factory cards and play.
 | WAVE 1.0 | yes | yes | yes | presets and options are saved to the card folder; MIDI in works |
 | TAPE 2.0 | yes | yes | yes | samples stream from the card folder (168-file factory card) |
 | TEMPO 1.0 | yes | yes | yes | arpeggiator transport and MIDI clock out work; needs the three small patches in `firmware/patches/tempo` |
+| GRAIN 0.1 | yes | yes | yes | a granular sampler written for this project, in `firmware/grain`; see below |
 
 Both run modes (realtime and deterministic lockstep) produce the same output.
 
@@ -174,7 +175,8 @@ the audio, the MIDI output and the key LED. `docs/demo-wave-factory-card.wav`
 was rendered this way from `examples/demo.txt` (normalised afterwards).
 `docs/gui-wave.png` shows the window with the key map overlay and WAVE holding
 a C major chord, `docs/gui-tape.png` the plain panel with TAPE holding the same
-chord, and `docs/gui-stub.png` the stand-in core used to develop the front-end.
+chord, `docs/gui-grain.png` GRAIN with its playheads on the keys, and
+`docs/gui-stub.png` the stand-in core used to develop the front-end.
 
 ## Sampling: sounds into the inputs
 
@@ -272,6 +274,49 @@ What is simulated, and how faithfully:
   keep updating but audio is not rendered for that time: in realtime mode the
   sound card stalls, in lockstep mode the firmware clock jumps ahead of the
   script clock.
+
+## GRAIN: a granular sampler firmware
+
+`firmware/grain` is a fourth firmware, grown from WAVE: the keybed, LEDs, MIDI,
+presets, menu layer, sequencer, filter, envelope, LFOs and FX chain are
+WAVE's, and the wavetable oscillator is replaced by a grain engine. It lives
+in this repository rather than in the CHOMPI checkout and is built with the
+others (`chompi-sim-gui-grain`, `chompi-sim-grain`).
+
+Sounds live in SDRAM as 48 kHz 16-bit stereo, up to ten seconds each: the
+first fourteen `.wav` files on the card in name order (48 kHz 16-bit PCM, mono
+or stereo; anything else is skipped) plus one recorded from the inputs.
+`scripts/make-grain-card.py DIR` makes a card with four synthetic sounds and
+the marker file the launcher reads the firmware name from; `--from-tape
+third_party/CHOMPI/firmware/card-profiles/tape-2.0` adds factory TAPE samples.
+
+Each held key plays a cloud of up to twelve grains from the selected sound,
+at the key's pitch relative to the middle key, which plays the sound at its
+own speed. The knobs:
+
+| Knob | Page 1 | Click | Click again |
+|---|---|---|---|
+| PITCH | pitch, fine | scan: frozen at the left, natural speed in the middle, four times at the right | |
+| A | position in the sound | spray, random spread around the position | |
+| B | grain size, 5 to 500 ms | density, half a grain to eight grains at a time | |
+| C | texture: fat windows to pointed ones, then a growing share of reversed grains | space, delay to the left, reverb to the right | filter cutoff |
+| transport | tempo, tap to set | | |
+| volume | volume | pan | |
+
+The lower row of key LEDs shows where each sounding voice is reading in the
+sound. With the mode switch up, holding CHOMPI records the microphone (or the
+aux input, with a cable in the jack) into the fifteenth sound and selects it,
+so you can play what you just sampled; in the simulator that is the INPUT bar.
+The menu (mode switch down, CHOMPI) is WAVE's: white keys are presets, the
+black keys octave, gate, the LFO switches, erase, copy and save, A and B set
+attack and release, and the PITCH knob's second page picks the sound.
+
+`examples/grain.txt` plays the first sound, changes the cloud, samples
+`examples/tone.wav` and plays it back. For the hardware, `firmware/grain/code/src`
+builds like WAVE (`make` with the GNU Arm Embedded 10.3 toolchain, with
+`LIBS_DIR` pointing at a CHOMPI `code/libs` folder); it has not been run on a
+device yet, so treat it as a desktop-tested starting point and watch the CPU
+load with dense clouds.
 
 ## Adding a firmware
 

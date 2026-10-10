@@ -26,6 +26,6 @@ struct FirmwareInfo
 
 /** The firmwares the panel knows; FirmwareByName() falls back to a plain entry. */
 const FirmwareInfo& FirmwareByName(const std::string& id);
-extern const FirmwareInfo kFirmwares[3];
+extern const FirmwareInfo kFirmwares[4];
 
 } // namespace gui
