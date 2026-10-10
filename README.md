@@ -382,10 +382,12 @@ bootloader's sources):
   TAPE is left alone: it opens its files by name in the root, and its build
   has no room to spare.
 - Starting the window on a shared card opens a boot window first: the LEDs
-  fade through random colours, as the bootloader's do, the first white caps
-  carry the firmware names, and for 2.5 seconds a held white key, or a click
-  on one of those caps, picks the firmware: 1 TAPE, 2 WAVE, 3 TEMPO, 4
-  GRAIN. With no key the window boots what the launcher picked: the last
+  fade through random colours, as the bootloader's do, except the first white
+  caps, which light in their firmware's colour with its name on them (TAPE
+  orange, WAVE blue, TEMPO green, GRAIN magenta); for 2.5 seconds a held
+  white key, or a click on one of those caps, picks the firmware: 1 TAPE, 2
+  WAVE, 3 TEMPO, 4 GRAIN, and the other caps dim once one is chosen. With no
+  key the window boots what the launcher picked: the last
   choice, remembered in `boot_choice.txt` in the card's root, else the first
   in that order. Another choice relaunches into that firmware's executable
   with `--booted`, which skips the window; the firmware tabs do the same.

@@ -469,14 +469,20 @@ int WhiteIndex(int semi)
     return n;
 }
 
-/** A key's LED: the firmware's, or the boot window's fade with the chosen cap lit white. */
+/** A key's LED: the firmware's, or in the boot window the bootloader's fade,
+ *  except on the caps that pick a firmware: each lights in its firmware's
+ *  colour, and once one is chosen the others dim. */
 Rgb KeyLedColour(const UiState& st, int semi)
 {
     if(!st.boot_window)
         return Sim::Get().KeyLed(kPianoKeyLed[semi]);
     const int w = WhiteIndex(semi);
-    if(w >= 0 && w == st.boot_choice)
-        return Rgb{255, 255, 255};
+    if(w >= 0 && w < int(st.boot_slots.size()) && !st.boot_slots[size_t(w)].empty())
+    {
+        const Rgb   c   = st.boot_slot_leds[size_t(w)];
+        const float dim = st.boot_choice < 0 || st.boot_choice == w ? 1.f : 0.28f;
+        return Rgb{uint8_t(c.r * dim), uint8_t(c.g * dim), uint8_t(c.b * dim)};
+    }
     return st.boot_led;
 }
 Rgb PanelLedColour(const UiState& st, int i)

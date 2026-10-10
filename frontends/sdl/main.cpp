@@ -481,7 +481,11 @@ class App
         {
             const std::string& id = BootOrder()[i];
             if(std::find(on_card_.begin(), on_card_.end(), id) != on_card_.end())
-                ui_.boot_slots[i] = gui::FirmwareByName(id).name[0] ? gui::FirmwareByName(id).name : id;
+            {
+                const gui::FirmwareInfo& info = gui::FirmwareByName(id);
+                ui_.boot_slots[i]             = info.name[0] ? info.name : id;
+                ui_.boot_slot_leds[i]         = Rgb{info.accent.r, info.accent.g, info.accent.b}; // the cap lights in the firmware's colour
+            }
         }
         ui_.boot_default = gui::FirmwareByName(ui_.firmware).name; // no key: the one the launcher picked
 
