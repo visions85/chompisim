@@ -3,6 +3,7 @@
  *  window, sound card, input mapping and the 60 fps event loop. */
 #include <SDL.h>
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdarg>
@@ -197,22 +198,29 @@ int ParseArgs(int argc, char** argv, Options& o)
 // ---------------------------------------------------------------------------
 // Keyboard mapping
 // ---------------------------------------------------------------------------
+
+/** The computer keyboard as a piano, laid out like a DAW's: the home row plays
+ *  the white keys (the lower row of caps) and the row above it the black keys,
+ *  from the low C to the F an octave and a fourth up. Physical key positions
+ *  (scancodes), so the rows hold on any keyboard layout; z and x move the span
+ *  down and up an octave to reach the top caps. */
 struct PianoKeyMap
 {
-    SDL_Keycode key;
-    int         semitone;
+    SDL_Scancode key;
+    int          semitone; /**< within the span, 0 = the low C */
 };
-constexpr PianoKeyMap kPianoMap[] = {
-    {SDLK_z, 0},  {SDLK_s, 1},  {SDLK_x, 2},  {SDLK_d, 3},  {SDLK_c, 4},  {SDLK_v, 5},  {SDLK_g, 6},
-    {SDLK_b, 7},  {SDLK_h, 8},  {SDLK_n, 9},  {SDLK_j, 10}, {SDLK_m, 11}, {SDLK_q, 12}, {SDLK_2, 13},
-    {SDLK_w, 14}, {SDLK_3, 15}, {SDLK_e, 16}, {SDLK_r, 17}, {SDLK_5, 18}, {SDLK_t, 19}, {SDLK_6, 20},
-    {SDLK_y, 21}, {SDLK_7, 22}, {SDLK_u, 23}, {SDLK_i, 24},
+constexpr PianoKeyMap kPianoMap[gui::kPianoSpan] = {
+    {SDL_SCANCODE_A, 0},  {SDL_SCANCODE_W, 1},  {SDL_SCANCODE_S, 2},  {SDL_SCANCODE_E, 3},  {SDL_SCANCODE_D, 4},
+    {SDL_SCANCODE_F, 5},  {SDL_SCANCODE_T, 6},  {SDL_SCANCODE_G, 7},  {SDL_SCANCODE_Y, 8},  {SDL_SCANCODE_H, 9},
+    {SDL_SCANCODE_U, 10}, {SDL_SCANCODE_J, 11}, {SDL_SCANCODE_K, 12}, {SDL_SCANCODE_O, 13}, {SDL_SCANCODE_L, 14},
+    {SDL_SCANCODE_P, 15}, {SDL_SCANCODE_SEMICOLON, 16}, {SDL_SCANCODE_APOSTROPHE, 17},
 };
+constexpr SDL_Scancode kOctaveDownKey = SDL_SCANCODE_Z, kOctaveUpKey = SDL_SCANCODE_X;
 
-int PianoSemitone(SDL_Keycode k)
+int PianoSpanSemitone(SDL_Scancode sc)
 {
     for(const PianoKeyMap& m : kPianoMap)
-        if(m.key == k)
+        if(m.key == sc)
             return m.semitone;
     return -1;
 }
@@ -422,6 +430,13 @@ std::vector<gui::SoundEntry> ScanCardSounds(const std::string& dir, int limit)
             out.push_back({int(out.size()), n.substr(0, n.size() - 4)});
     }
     return out;
+}
+
+std::array<int, SDL_NUM_SCANCODES> MakeHeldButtons()
+{
+    std::array<int, SDL_NUM_SCANCODES> a;
+    a.fill(-1);
+    return a;
 }
 
 // ---------------------------------------------------------------------------
@@ -729,6 +744,19 @@ class App
             std::fprintf(stderr, "renderer: %s%s\n", info.name,
                          (info.flags & SDL_RENDERER_PRESENTVSYNC) ? " (vsync)" : "");
 
+        // the key map prints what the piano keys say on this keyboard layout
+        for(const PianoKeyMap& m : kPianoMap)
+        {
+            std::string name = SDL_GetKeyName(SDL_GetKeyFromScancode(m.key));
+            bool        ascii = !name.empty();
+            for(unsigned char c : name)
+                if(c < 32 || c > 126)
+                    ascii = false;
+            if(!ascii) // the panel font is ASCII: fall back to the US name of the key
+                name = SDL_GetScancodeName(m.key);
+            ui_.piano_keys[size_t(m.semitone)] = name;
+        }
+
         // Drawing happens in output pixels, mouse events arrive in window points.
         int outW = winW, outH = winH;
         SDL_GetRendererOutputSize(renderer_, &outW, &outH);
@@ -820,6 +848,14 @@ class App
     {
         if(IsSmallKnob(enc))
             last_small_knob_ = enc;
+    }
+
+    /** z and x: the octave of the keybed the computer keyboard starts at. */
+    void SetPianoOctave(int octave)
+    {
+        piano_octave_    = std::clamp(octave, 0, 1);
+        ui_.piano_octave = piano_octave_;
+        Debug("keyboard octave %d", piano_octave_);
     }
 
     gui::Hit HitAtMouse(int wx, int wy) const
@@ -917,9 +953,26 @@ class App
         }
         if(e.repeat)
             return;
-        int semitone = PianoSemitone(k);
-        if(semitone >= 0)
-            input_.KeyboardButton(kPianoKeys[semitone], down);
+        const SDL_Scancode sc = e.keysym.scancode;
+        if(!down && sc < SDL_NUM_SCANCODES && held_button_[sc] >= 0)
+        {
+            // let go of the cap this key pressed, whatever the octave is now
+            input_.KeyboardButton(held_button_[sc], false);
+            held_button_[sc] = -1;
+            return;
+        }
+        const int span = PianoSpanSemitone(sc);
+        if(span >= 0)
+        {
+            const int semitone = span + 12 * piano_octave_;
+            if(down && semitone <= 24) // past the top cap otherwise
+            {
+                held_button_[sc] = kPianoKeys[semitone];
+                input_.KeyboardButton(kPianoKeys[semitone], true);
+            }
+        }
+        else if((sc == kOctaveDownKey || sc == kOctaveUpKey) && down)
+            SetPianoOctave(sc == kOctaveUpKey ? 1 : 0);
         else if(k == SDLK_SPACE)
             input_.KeyboardButton(KEY_PLAY, down);
         else if(k == SDLK_RETURN || k == SDLK_KP_ENTER)
@@ -1052,7 +1105,10 @@ class App
                 if(e.window.event == SDL_WINDOWEVENT_LEAVE)
                     ui_.hover = gui::Hit{};
                 else if(e.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+                {
                     input_.ReleaseKeyboard(); // no key-up events arrive once focus is gone
+                    held_button_.fill(-1);
+                }
                 break;
             default: break;
         }
@@ -1081,6 +1137,8 @@ class App
                       static_cast<unsigned long long>(st.blocks_rendered), Sim::Get().NowMs(), st.max_block_us,
                       Sim::Get().FirmwareRunning() ? "running" : "stopped");
         ui_.status = buf;
+        if(piano_octave_ > 0)
+            ui_.status += "   keys: octave up (z = down)";
 
         InputState in = Sim::Get().GetInputState();
         if(!in.name.empty() || mic_dev_ != 0)
@@ -1164,6 +1222,8 @@ class App
     Input                       input_;
     gui::Hit                    mouse_hit_;
     int                         last_small_knob_ = ENC_SW4;
+    int                         piano_octave_    = 0;  /**< the keyboard's span starts at this octave */
+    std::array<int, SDL_NUM_SCANCODES> held_button_ = MakeHeldButtons(); /**< cap pressed by each key, or -1 */
     float                       mouse_y_logical_ = 0.f;
     int                         drag_enc_        = -1;
     float                       drag_start_y_    = 0.f;

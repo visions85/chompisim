@@ -26,9 +26,6 @@ namespace gui
 {
 using namespace chompi_sim;
 
-const char* const kPianoKeyNames[25] = {"Z", "S", "X", "D", "C", "V", "G", "B", "H", "N", "J", "M", "Q",
-                                        "2", "W", "3", "E", "R", "5", "T", "6", "Y", "7", "U", "I"};
-
 namespace
 {
 
@@ -161,13 +158,13 @@ constexpr float kLogY    = 392 + kBarH;
 constexpr float kLogDy   = 10;
 constexpr float kTextX   = 16;
 
-const char* const kHint1 = "/ or ? = key map   PIANO  z s x d c v g b h n j m = lower octave   q 2 w 3 e r 5 t 6 y 7 u i = upper   "
-                           "SPACE play   RETURN loop   L-SHIFT chompi (hold)   TAB mode   ESC quit";
+const char* const kHint1 = "/ = key map   PIANO  a s d f g h j k l ; ' = white keys   w e t y u o p = black keys   "
+                           "z x = octave down/up   SPACE play   RETURN loop   L-SHIFT chompi (hold)   TAB mode   ESC quit";
 const char* const kHint2 = "KNOBS  drag or scroll = turn   click = push   right-click = hold   [ ] transport   - = volume   "
                            "LEFT/RIGHT last small knob   F1-F6 push   F7/F8 input play/stop  F9 mic  F10 load";
 /** Hint lines while the key map overlay is up. */
-const char* const kMapHint1 = "KEY MAP   the letters on the caps play the notes (two octaves)   LEFT/RIGHT arrows turn the small knob "
-                              "touched last   / or ? hides this map";
+const char* const kMapHint1 = "KEY MAP   the letters on the caps play the notes   z / x move them down / up an octave   "
+                              "LEFT/RIGHT arrows turn the small knob touched last   / or ? hides this map";
 const char* const kMapHint2 = "MOUSE   click or hold any key   drag up/down or scroll on a knob = turn   click a knob = push   "
                               "right-click = hold   F7/F8 input play/stop  F9 mic  F10 load a sound   ESC quit";
 
@@ -633,11 +630,15 @@ void DrawKeyMap(Canvas& cv, const UiState& st)
 {
     cv.FillRect(kBody.x, kBody.y, kBody.w, kBody.h, SDL_Color{0, 0, 0, kMapDim});
 
+    // the computer key on each cap, for the octave the keyboard is at
     for(int semi = 0; semi < 25; semi++)
     {
+        const int s = semi - 12 * st.piano_octave;
+        if(s < 0 || s >= kPianoSpan || st.piano_keys[size_t(s)].empty())
+            continue;
         SDL_FRect r  = PianoKeyRect(semi);
         float     dy = Sim::Get().ButtonPressed(kPianoKeys[semi]) ? kKeyPressDy : 0.f;
-        DrawKeyChip(cv, r.x + r.w / 2, r.y + r.h - kKeyLipH - kChipH / 2 - 3 + dy, kPianoKeyNames[semi]);
+        DrawKeyChip(cv, r.x + r.w / 2, r.y + r.h - kKeyLipH - kChipH / 2 - 3 + dy, st.piano_keys[size_t(s)].c_str());
     }
 
     // Every box sits in the free band between the firmware bar and the LED

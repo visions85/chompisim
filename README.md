@@ -83,9 +83,16 @@ the mode switch is drawn where the board puts it.
 ```
   o        o        o        o        o      o   (  )   o   o        o       <- panel LEDs
  mode  [CHOMPI]  (PITCH)   (A)      (B)      (C)   (TRANSPORT)  [PLAY] [LOOP]  (VOLUME)
-       [s] [d]      [g] [h] [j]      [2] [3]      [5] [6] [7]                  <- upper row of caps
-     [z] [x] [c] [v] [b] [n] [m] [q] [w] [e] [r] [t] [y] [u] [i]               <- lower row of caps
+       [w] [e]      [t] [y] [u]      [o] [p]      [ ] [ ] [ ]                  <- upper row of caps
+     [a] [s] [d] [f] [g] [h] [j] [k] [l] [;] ['] [ ] [ ] [ ] [ ]               <- lower row of caps
 ```
+
+The computer keyboard is laid out like a DAW's: the home row plays the white
+keys (the lower row of caps) and the row above it the black keys, from the
+low C to the F an octave and a fourth up. `x` moves that span up an octave to
+reach the top caps and `z` brings it back; the key map overlay prints the
+letters on the caps they play right now. Physical key positions are used, so
+the rows hold on any keyboard layout.
 
 Each key cap is lit by the LED under it. The bar above the instrument names
 the firmware, in its colour, with tabs to switch, and the panel tells what the
@@ -106,8 +113,9 @@ No artwork or logos are reproduced.
 
 | Control | Computer |
 |---|---|
-| Piano keys, lower octave (C to B) | `z s x d c v g b h n j m` |
-| Piano keys, upper octave (C to C) | `q 2 w 3 e r 5 t 6 y 7 u i` |
+| White keys (lower row of caps), C D E F G A B C D E F | `a s d f g h j k l ; '` |
+| Black keys (upper row), C# D# F# G# A# C# D# | `w e t y u o p` |
+| Octave of the computer keyboard | `x` up (the top caps), `z` down |
 | PLAY / LOOP / CHOMPI | Space / Return / Left Shift (hold) |
 | Mode toggle switch | Tab (latches), or click it |
 | Any key or button | click it with the mouse |
@@ -125,8 +133,8 @@ octave each way over the whole range, and it retunes notes that are already
 sounding. A click on it switches that knob to wavetable cycling (its LED
 changes colour) and a second click brings pitch back. Octave shifts live in
 the menu: with the mode switch down (`Tab`), hold the CHOMPI key (`Left
-Shift`) and press the first black key (`s`) for an octave down or the second
-(`d`) for an octave up.
+Shift`) and press the first black key (`w`) for an octave down or the second
+(`e`) for an octave up.
 
 Command line: `--card DIR` (default `card`), `--cards DIR` (a folder of card
 folders, one per firmware), `--firmware wave|tape|tempo|grain` (launcher), `--no-audio`
@@ -211,7 +219,7 @@ In TAPE, with the mode switch up, the CHOMPI key records while it is held
 (or latches, if that option is on): hold it, press `PLAY` in the bar (or
 `F7`), or speak with `MIC` on, release it, and the keys play the new sample
 from the chompi slot. The save is in the menu: mode
-switch down, hold CHOMPI, press the top black key (`7`) for SAVE, release
+switch down, hold CHOMPI, press the top black key (`x` then `u`: the keyboard's upper octave) for SAVE, release
 CHOMPI, press the white key of the slot, press CHOMPI; the card folder gets
 `jammi_a<slot>.wav`. `examples/record-tape.txt` scripts exactly that with
 `examples/tone.wav` and plays the saved slot at the end; TEMPO records the

@@ -21,8 +21,10 @@ namespace gui
 constexpr int kPanelW = 1120;
 constexpr int kPanelH = 446;
 
-/** Computer keyboard key printed on each piano key, indexed by semitone. */
-extern const char* const kPianoKeyNames[25];
+/** The computer keyboard plays a span of this many semitones, C to the F an
+ *  octave and a fourth up: the home row the white keys, the row above it the
+ *  black keys. UiState::piano_octave moves the span up to the top caps. */
+constexpr int kPianoSpan = 18;
 
 enum class HitKind
 {
@@ -58,6 +60,8 @@ struct UiState
     std::array<float, chompi_sim::kNumEncoders> knob_angle{};   /**< degrees, clockwise positive */
     std::array<bool, chompi_sim::kNumEncoders>  knob_pressed{}; /**< encoder push switches */
     int                                          arrow_knob = -1; /**< small knob the Left/Right arrow keys turn */
+    std::array<std::string, kPianoSpan>          piano_keys{};    /**< name of the computer key on each semitone of the span ("" = none) */
+    int                                          piano_octave = 0; /**< the span starts at this octave of the keybed: 0 or 1 */
     bool                                         keymap = true;   /**< draw the key map overlay */
     std::string                                  firmware;        /**< id of the firmware running ("wave"); see firmware_info.h */
     std::vector<std::string>                     firmwares_built; /**< ids the bar can switch to */
