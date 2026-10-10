@@ -1,0 +1,104 @@
+Reads the card from TEMPO/ when that folder exists, so one card can hold several
+firmwares (chompi-sim's scripts/make-multi-card.py): the current directory is
+changed after the mount and the Chromatic, Slice and Buffer folders are opened
+relative to it. A card of TEMPO's own is unchanged: without the folder everything
+stays in the root. Hardware builds take this patch as well (FatFs is built with
+_FS_RPATH 2).
+
+--- a/chompi_main.cpp
++++ b/chompi_main.cpp
+@@ -384,6 +384,10 @@
+     fsi.Init(FatFSInterface::Config::MEDIA_SD);
+     System::Delay(100);
+     f_mount(&fsi.GetSDFileSystem(), fsi.GetSDPath(), 1);
++    // On a card shared with other firmwares the sample folders and settings
++    // live in TEMPO/ (chompi-sim's scripts/make-multi-card.py); a card of
++    // TEMPO's own has no such folder and everything stays in the root.
++    f_chdir("/TEMPO");
+ 
+     options.Init();
+     tim_base_freq = System::GetPClk2Freq();
+--- a/SampleManager.h
++++ b/SampleManager.h
+@@ -43,7 +43,7 @@
+         FILINFO fno;
+         FRESULT res;
+ 
+-        res = f_opendir(&dir, "/Chromatic");
++        res = f_opendir(&dir, "Chromatic");
+         if (res == FR_OK) {
+             while (true) {
+                 res = f_readdir(&dir, &fno);
+@@ -55,7 +55,7 @@
+                     int slotNum = atoi(numberPart);
+                     if (slotNum >= 1 && slotNum <= 14) {
+                         loadedSamples[0][slotNum - 1].name = fno.fname;
+-                        loadedSamples[0][slotNum - 1].fullPath = "/Chromatic/" + loadedSamples[0][slotNum - 1].name;
++                        loadedSamples[0][slotNum - 1].fullPath = "Chromatic/" + loadedSamples[0][slotNum - 1].name;
+                         loadedSamples[0][slotNum - 1].status = SampleStatus::LOADING;
+                     }
+                 }
+@@ -63,7 +63,7 @@
+             f_closedir(&dir);
+         }
+ 
+-        res = f_opendir(&dir, "/Slice");
++        res = f_opendir(&dir, "Slice");
+         if (res == FR_OK) {
+             while (true) {
+                 res = f_readdir(&dir, &fno);
+@@ -75,7 +75,7 @@
+                     int slotNum = atoi(numberPart);
+                     if (slotNum >= 1 && slotNum <= 14) {
+                         loadedSamples[1][slotNum - 1].name = fno.fname;
+-                        loadedSamples[1][slotNum - 1].fullPath = "/Slice/" + loadedSamples[1][slotNum - 1].name;
++                        loadedSamples[1][slotNum - 1].fullPath = "Slice/" + loadedSamples[1][slotNum - 1].name;
+                         loadedSamples[1][slotNum - 1].status = SampleStatus::LOADING;
+                     }
+                 }
+@@ -83,7 +83,7 @@
+             f_closedir(&dir);
+         }
+ 
+-        res = f_opendir(&dir, "/Buffer");
++        res = f_opendir(&dir, "Buffer");
+         if (res == FR_OK) {
+             while (true) {
+                 res = f_readdir(&dir, &fno);
+@@ -92,7 +92,7 @@
+                 }
+                 if (strcmp(fno.fname, "buffer.wav") == 0) {
+                         loadedSamples[0][14].name = fno.fname;
+-                        loadedSamples[0][14].fullPath = "/Buffer/" + loadedSamples[0][14].name;
++                        loadedSamples[0][14].fullPath = "Buffer/" + loadedSamples[0][14].name;
+                         loadedSamples[0][14].status = SampleStatus::LOADING;
+                 }
+             }
+@@ -176,12 +176,12 @@
+ 
+     void deleteSlot(size_t slot, size_t engine) {
+         if (engine == 0) {
+-            delBuffer = "/Chromatic/" + loadedSamples[0][slot - 1].name;
++            delBuffer = "Chromatic/" + loadedSamples[0][slot - 1].name;
+             FileRequest delReq(FileRequest::Type::UNLINK, nullptr, delBuffer.c_str(), 0, nullptr, nullptr, nullptr);
+             file_manager_->request_fifo.PushBack(delReq);
+         }
+         else {
+-            delBuffer = "/Slice/" + loadedSamples[1][slot - 1].name;
++            delBuffer = "Slice/" + loadedSamples[1][slot - 1].name;
+             FileRequest delReq(FileRequest::Type::UNLINK, nullptr, delBuffer.c_str(), 0, nullptr, nullptr, nullptr);
+             file_manager_->request_fifo.PushBack(delReq);
+         }
+@@ -268,10 +268,10 @@
+     void WriteFileToCard(size_t src, size_t dst, size_t src_engine, size_t dst_engine) {
+ 
+         if (dst_engine == 0) {
+-            writeBuffer = "/Chromatic/chroma_a" + std::to_string(dst) + ".wav";
++            writeBuffer = "Chromatic/chroma_a" + std::to_string(dst) + ".wav";
+         }
+         else {
+-            writeBuffer = "/Slice/slice_a" + std::to_string(dst) + ".wav";
++            writeBuffer = "Slice/slice_a" + std::to_string(dst) + ".wav";
+         }
+ 
+         FileRequest openReq(FileRequest::Type::OPEN_NEW, &writeFile, writeBuffer.c_str(), 0, nullptr, nullptr, nullptr);

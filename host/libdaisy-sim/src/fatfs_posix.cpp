@@ -26,6 +26,7 @@ namespace
 {
 std::mutex  g_m;
 std::string g_root;
+std::string g_cwd; /**< the current directory as a host path (f_chdir); empty = the root */
 bool        g_mounted      = false;
 bool        g_card_present = true;
 
@@ -50,7 +51,9 @@ std::string HostPath(const char* path)
     std::string p = path ? path : "";
     if(p.size() >= 2 && p[1] == ':')
         p = p.substr(2);
-    std::string cur = g_root;
+    // an absolute path starts at the root, a relative one at the current directory
+    const bool  absolute = !p.empty() && (p[0] == '/' || p[0] == '\\');
+    std::string cur      = absolute || g_cwd.empty() ? g_root : g_cwd;
     size_t      i   = 0;
     while(i < p.size())
     {
@@ -62,7 +65,12 @@ std::string HostPath(const char* path)
         if(j > i)
         {
             std::string comp = p.substr(i, j - i);
-            if(comp != ".")
+            if(comp == "..")
+            {
+                if(cur != g_root)
+                    cur = fs::path(cur).parent_path().string();
+            }
+            else if(comp != ".")
             {
                 std::string candidate = cur + "/" + comp;
                 std::error_code ec;
@@ -113,6 +121,7 @@ void SetCardRoot(const std::string& root)
 {
     std::lock_guard<std::mutex> l(g_m);
     g_root = root;
+    g_cwd.clear();
     while(g_root.size() > 1 && g_root.back() == '/')
         g_root.pop_back();
 }
@@ -159,6 +168,7 @@ extern "C"
         fs->id       = 1;
         fs->sim_root = &g_root;
         g_mounted    = true;
+        g_cwd.clear(); // a fresh mount starts at the root, as on the device
         return FR_OK;
     }
 
@@ -411,7 +421,19 @@ extern "C"
         return FR_OK;
     }
 
-    FRESULT f_chdir(const TCHAR*) { return FR_OK; }
+    /** From here on relative paths start in `path`, as with _FS_RPATH on the device. */
+    FRESULT f_chdir(const TCHAR* path)
+    {
+        std::lock_guard<std::mutex> l(g_m);
+        if(!CardOk())
+            return FR_NOT_READY;
+        std::string     hp = HostPath(path);
+        std::error_code ec;
+        if(!fs::is_directory(hp, ec))
+            return FR_NO_PATH;
+        g_cwd = hp == g_root ? "" : hp;
+        return FR_OK;
+    }
     FRESULT f_getfree(const TCHAR*, DWORD* nclst, FATFS** fatfs)
     {
         if(nclst)

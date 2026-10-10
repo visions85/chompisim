@@ -1,0 +1,30 @@
+Reads the card from WAVE/ when that folder exists, so one card can hold several
+firmwares (chompi-sim's scripts/make-multi-card.py): the current directory is
+changed after the mount and the wavetable scan looks there. A card of WAVE's own
+is unchanged: without the folder everything stays in the root. Hardware builds
+take this patch as well (FatFs is built with _FS_RPATH 2).
+
+--- a/chompi_main.cpp
++++ b/chompi_main.cpp
+@@ -338,6 +338,10 @@
+     fsi.Init(FatFSInterface::Config::MEDIA_SD);
+     System::Delay(100);
+     f_mount(&fsi.GetSDFileSystem(), fsi.GetSDPath(), 1);
++    // On a card shared with other firmwares the wavetables and settings live
++    // in WAVE/ (chompi-sim's scripts/make-multi-card.py); a card of WAVE's own
++    // has no such folder and everything stays in the root.
++    f_chdir("/WAVE");
+ 
+     wtLoader.Init(&fsi.GetSDFileSystem(), wavetableMemory, hw.seed.AudioSampleRate());
+ 
+--- a/WavetableManager.h
++++ b/WavetableManager.h
+@@ -157,7 +157,7 @@
+         FILINFO fno;
+         FRESULT res;
+ 
+-        res = f_opendir(&dir, "/");
++        res = f_opendir(&dir, "."); // the current directory: the root, or WAVE/ on a shared card
+         if (res == FR_OK) {
+             while (true) {
+                 res = f_readdir(&dir, &fno);

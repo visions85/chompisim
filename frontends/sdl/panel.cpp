@@ -457,6 +457,33 @@ void DrawLed(Canvas& cv, float cx, float cy, float r, Rgb c)
     cv.Disc(cx - r * 0.3f, cy - r * 0.3f, r * 0.3f, SDL_Color{255, 255, 255, 110});
 }
 
+/** The white key's number (0..14) of a semitone, or -1 for a black key. */
+int WhiteIndex(int semi)
+{
+    if(kPianoGeom[semi].upper)
+        return -1;
+    int n = 0;
+    for(int s = 0; s < semi; s++)
+        if(!kPianoGeom[s].upper)
+            n++;
+    return n;
+}
+
+/** A key's LED: the firmware's, or the boot window's fade with the chosen cap lit white. */
+Rgb KeyLedColour(const UiState& st, int semi)
+{
+    if(!st.boot_window)
+        return Sim::Get().KeyLed(kPianoKeyLed[semi]);
+    const int w = WhiteIndex(semi);
+    if(w >= 0 && w == st.boot_choice)
+        return Rgb{255, 255, 255};
+    return st.boot_led;
+}
+Rgb PanelLedColour(const UiState& st, int i)
+{
+    return st.boot_window ? st.boot_led : Sim::Get().PanelLed(i);
+}
+
 /** One piano key, lit by its LED and, with the mode switch down, carrying its menu-layer name. */
 void DrawPianoKey(Canvas& cv, int semi, const UiState& st)
 {
@@ -464,7 +491,7 @@ void DrawPianoKey(Canvas& cv, int semi, const UiState& st)
     SDL_FRect          r       = PianoKeyRect(semi);
     bool               pressed = Sim::Get().ButtonPressed(kPianoKeys[semi]);
     bool               hover   = st.hover == Hit{HitKind::PianoKey, semi};
-    Rgb                led     = Sim::Get().KeyLed(kPianoKeyLed[semi]);
+    Rgb                led     = KeyLedColour(st, semi);
     SDL_Color          face    = Tint(g.upper ? kUpperFace : kLowerFace, led, 0.75f);
     float              dy      = pressed ? kKeyPressDy : 0.f;
     float              b       = Brightness(led);
@@ -478,6 +505,14 @@ void DrawPianoKey(Canvas& cv, int semi, const UiState& st)
         float     in  = 7.f;
         cv.RoundRect(r.x + in, r.y + in + dy, r.w - 2 * in, r.h - 2 * in - kKeyLipH + (pressed ? 3.f : 0.f), kCapRad - 2, lit);
         cv.Glow(r.x + r.w / 2, r.y + r.h / 2 + dy, r.w * 0.55f, led, 0.5f, true);
+    }
+    // the boot window: the firmware each of the first white caps picks
+    if(st.boot_window)
+    {
+        const int w = WhiteIndex(semi);
+        if(w >= 0 && w < int(st.boot_slots.size()) && !st.boot_slots[size_t(w)].empty())
+            cv.Text(r.x + r.w / 2, r.y + 8 + dy, 1, kMenuCue, std::to_string(w + 1) + " " + st.boot_slots[size_t(w)], 0);
+        return;
     }
     // the menu layer (mode switch down, CHOMPI held): what the key does in it
     if(Sim::Get().ToggleDown())
@@ -908,9 +943,9 @@ SDL_FRect LedRect(int i)
     const float        r = l.r_mm * kMmPx + 2;
     return SDL_FRect{X(l.x_mm) - r, Y(l.y_mm) - r, 2 * r, 2 * r};
 }
-void DrawPanelLed(Canvas& cv, int i)
+void DrawPanelLed(Canvas& cv, int i, const UiState& st)
 {
-    DrawLed(cv, X(kPanelLeds[i].x_mm), Y(kPanelLeds[i].y_mm), kPanelLeds[i].r_mm * kMmPx, Sim::Get().PanelLed(i));
+    DrawLed(cv, X(kPanelLeds[i].x_mm), Y(kPanelLeds[i].y_mm), kPanelLeds[i].r_mm * kMmPx, PanelLedColour(st, i));
 }
 
 /** Where a target is on the canvas (w <= 0: the step has none). */
@@ -994,7 +1029,7 @@ void DrawTargetControls(Canvas& cv, const TourTarget& t, const UiState& st)
                 if(f.button == t.a)
                 {
                     DrawFuncKey(cv, f, st);
-                    DrawPanelLed(cv, LedOfFuncKey(f.button));
+                    DrawPanelLed(cv, LedOfFuncKey(f.button), st);
                 }
             break;
         case TourTarget::Knob:
@@ -1004,11 +1039,11 @@ void DrawTargetControls(Canvas& cv, const TourTarget& t, const UiState& st)
                     DrawKnob(cv, k, st);
                     if(k.big)
                     {
-                        DrawPanelLed(cv, 5);
-                        DrawPanelLed(cv, 6);
+                        DrawPanelLed(cv, 5, st);
+                        DrawPanelLed(cv, 6, st);
                     }
                     else
-                        DrawPanelLed(cv, LedOfKnob(k.enc));
+                        DrawPanelLed(cv, LedOfKnob(k.enc), st);
                 }
             break;
         case TourTarget::WhiteKeys:
@@ -1025,7 +1060,7 @@ void DrawTargetControls(Canvas& cv, const TourTarget& t, const UiState& st)
             break;
         case TourTarget::PanelLeds:
             for(int i = 0; i < kNumPanelLeds; i++)
-                DrawPanelLed(cv, i);
+                DrawPanelLed(cv, i, st);
             break;
         default: break; // the bar is not shaded
     }
@@ -1185,6 +1220,32 @@ void DrawTour(Canvas& cv, const UiState& st)
     }
 }
 
+// ---------------------------------------------------------------------------
+// The boot window of a shared card: a note while the LEDs fade and the first
+// white caps carry the firmware names (main.cpp runs the window itself)
+// ---------------------------------------------------------------------------
+void DrawBootBanner(Canvas& cv, const UiState& st)
+{
+    if(!st.boot_window)
+        return;
+    const float w = 600.f, h = 60.f;
+    const float x = (float(kPanelW) - w) / 2, y = kBarH + 58;
+    cv.RoundRect(x - 2, y - 2, w + 4, h + 4, 8.f, kMapKey);
+    cv.RoundRect(x, y, w, h, 6.f, kNoteBg);
+    char left[32];
+    std::snprintf(left, sizeof left, "%.1f s", st.boot_left);
+    cv.Text(x + 12, y + 10, 2, kMapKey, "POWER ON");
+    cv.Text(x + w - 12, y + 14, 1, kNoteDim, left, 1);
+    std::string keys;
+    for(size_t i = 0; i < st.boot_slots.size(); i++)
+        if(!st.boot_slots[i].empty())
+            keys += (keys.empty() ? "" : "   ") + std::to_string(i + 1) + " " + st.boot_slots[i];
+    cv.Text(x + 12, y + 31, 1, kNoteText, "Hold a white key to choose the firmware:   " + keys);
+    cv.Text(x + 12, y + 43, 1, kNoteDim,
+            "a s d f on the keyboard, or click a cap; no key boots "
+                + (st.boot_default.empty() ? std::string("the last choice") : st.boot_default) + ".");
+}
+
 /** While the tour is up every click is for it: its buttons, or "next". */
 Hit TourHit(const UiState& st, float x, float y)
 {
@@ -1218,13 +1279,14 @@ void Panel::Draw(const UiState& st)
     for(const KnobDef& k : kKnobs)
         DrawKnob(cv, k, st);
     for(int i = 0; i < kNumPanelLeds; i++)
-        DrawLed(cv, X(kPanelLeds[i].x_mm), Y(kPanelLeds[i].y_mm), kPanelLeds[i].r_mm * kMmPx, Sim::Get().PanelLed(i));
+        DrawPanelLed(cv, i, st);
     DrawToggle(cv, st);
     if(st.keymap)
         DrawKeyMap(cv, st);
     DrawBar(cv, st);
     DrawTextArea(cv, st);
     DrawSoundMenu(cv, st);
+    DrawBootBanner(cv, st);
     DrawTour(cv, st);
 }
 

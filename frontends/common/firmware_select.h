@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 #ifdef __APPLE__
@@ -55,21 +56,76 @@ inline std::string ExecutableDir(const char* argv0)
     return p.parent_path().string();
 }
 
-/** The firmware a card folder was made for, from the firmware binary on it
- *  (CHOMPI_WAVE*.bin and friends); empty when there is none. */
-inline std::string DetectFirmware(const std::string& card_dir)
+/** The firmwares in the order the boot window's keys offer them: white key 1
+ *  TAPE, 2 WAVE, 3 TEMPO, 4 GRAIN (the slots are fixed, a missing one stays dark). */
+inline const std::vector<std::string>& BootOrder()
 {
-    std::error_code ec;
+    static const std::vector<std::string> k = {"tape", "wave", "tempo", "grain"};
+    return k;
+}
+
+/** Every firmware a card folder holds a binary (CHOMPI_WAVE*.bin and friends)
+ *  or marker file (CHOMPI_GRAIN.txt) for, in boot order. More than one means a
+ *  card made by scripts/make-multi-card.py: TAPE in the root, the others in
+ *  WAVE/, TEMPO/ and GRAIN/. */
+inline std::vector<std::string> DetectFirmwares(const std::string& card_dir)
+{
+    std::vector<std::string> found;
+    std::error_code          ec;
     for(const auto& e : std::filesystem::directory_iterator(card_dir, ec))
     {
         std::string n = Lower(e.path().filename().string());
         if(n.size() < 4 || (n.substr(n.size() - 4) != ".bin" && n.substr(n.size() - 4) != ".txt") || n.rfind("chompi", 0) != 0)
             continue;
         for(const std::string& fw : KnownFirmwares())
-            if(n.find(fw) != std::string::npos)
-                return fw;
+            if(n.find(fw) != std::string::npos && std::find(found.begin(), found.end(), fw) == found.end())
+                found.push_back(fw);
     }
+    std::vector<std::string> ordered;
+    for(const std::string& fw : BootOrder())
+        if(std::find(found.begin(), found.end(), fw) != found.end())
+            ordered.push_back(fw);
+    return ordered;
+}
+
+/** The firmware a card folder was made for; the first in boot order when it
+ *  holds several; empty when there is none. */
+inline std::string DetectFirmware(const std::string& card_dir)
+{
+    const auto v = DetectFirmwares(card_dir);
+    return v.empty() ? "" : v.front();
+}
+
+/** What the (simulated) bootloader remembers on a shared card: the firmware
+ *  it booted last, in boot_choice.txt in the card's root. */
+inline std::string BootChoice(const std::string& card_dir)
+{
+    std::ifstream f(std::filesystem::path(card_dir) / "boot_choice.txt");
+    std::string   s;
+    std::getline(f, s);
+    while(!s.empty() && (s.back() == '\r' || s.back() == ' '))
+        s.pop_back();
+    s = Lower(s);
+    for(const std::string& fw : KnownFirmwares())
+        if(s == fw)
+            return fw;
     return "";
+}
+
+inline void SaveBootChoice(const std::string& card_dir, const std::string& fw)
+{
+    std::ofstream f(std::filesystem::path(card_dir) / "boot_choice.txt");
+    f << fw << "\n";
+}
+
+/** The firmware a shared card boots when no key is held: the remembered one, else the first. */
+inline std::string DefaultBoot(const std::string& card_dir)
+{
+    const auto on_card = DetectFirmwares(card_dir);
+    if(on_card.empty())
+        return "";
+    const std::string last = BootChoice(card_dir);
+    return std::find(on_card.begin(), on_card.end(), last) != on_card.end() ? last : on_card.front();
 }
 
 /** Firmwares that have an executable `<base>-<fw>` in `dir`. */

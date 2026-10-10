@@ -142,6 +142,7 @@ at start regardless and `--no-tour` never shows it by itself.
 | Push encoders SW1 to SW6 | F1 to F6 |
 | Key map overlay | `/` (toggle; `--no-keymap` starts without it) |
 | Guided tour | `?` in the bar; right and left arrows step through it, Escape leaves |
+| Boot window (a shared card) | hold `a` `s` `d` or `f`, or click one of the first white caps, while the LEDs fade |
 | Sound menu (GRAIN) | click SOUND in the bar, then a row; Escape or a click elsewhere closes it |
 | Quit | Escape |
 
@@ -206,7 +207,8 @@ was rendered this way from `examples/demo.txt` (normalised afterwards).
 `docs/gui-wave.png` shows the window with the key map overlay and WAVE holding
 a C major chord, `docs/gui-tape.png` the plain panel with TAPE holding the same
 chord, `docs/gui-grain.png` GRAIN with its playheads on the keys and its sound
-menu open, `docs/gui-tour.png` a step of the guided tour on TAPE, and
+menu open, `docs/gui-tour.png` a step of the guided tour on TAPE,
+`docs/gui-boot.png` the boot window of a shared card, and
 `docs/gui-stub.png` the stand-in core used to develop the front-end.
 
 ## Sampling: sounds into the inputs
@@ -360,6 +362,41 @@ builds like WAVE (`make` with the GNU Arm Embedded 10.3 toolchain, with
 `LIBS_DIR` pointing at a CHOMPI `code/libs` folder); it has not been run on a
 device yet, so treat it as a desktop-tested starting point and watch the CPU
 load with dense clouds.
+
+## One card, several firmwares (prototype)
+
+On the instrument the bootloader installs the first `.bin` it finds in the
+root of the card, and every firmware keeps its files in the root, so a card
+holds one firmware. This is a prototype of the way around both, as a
+modified bootloader could do it (the open-source bundle ships the
+bootloader's sources):
+
+- `scripts/make-multi-card.py DIR` builds a shared card from the factory
+  card profiles: TAPE's files in the root, the others' in `WAVE/`, `TEMPO/`
+  and `GRAIN/`, and every firmware binary (GRAIN's marker file) in the root.
+- WAVE and TEMPO are patched to change directory into their folder after
+  mounting the card, when the folder exists
+  (`firmware/patches/*/card_folder.patch`; FatFs is built with relative
+  paths, so the patches apply to hardware builds as they are), and GRAIN
+  does the same. A card of their own, with no such folder, works as before.
+  TAPE is left alone: it opens its files by name in the root, and its build
+  has no room to spare.
+- Starting the window on a shared card opens a boot window first: the LEDs
+  fade through random colours, as the bootloader's do, the first white caps
+  carry the firmware names, and for 2.5 seconds a held white key, or a click
+  on one of those caps, picks the firmware: 1 TAPE, 2 WAVE, 3 TEMPO, 4
+  GRAIN. With no key the window boots what the launcher picked: the last
+  choice, remembered in `boot_choice.txt` in the card's root, else the first
+  in that order. Another choice relaunches into that firmware's executable
+  with `--booted`, which skips the window; the firmware tabs do the same.
+  `docs/gui-boot.png` shows the window.
+- The headless runner has no window: `chompi-sim --card DIR` boots the
+  remembered choice and `--firmware NAME` any other.
+
+The instrument would need a bootloader that reads the key shift registers
+during its boot window and picks the binary by name, ideally keeping each
+firmware in its own QSPI slot so that switching does not reflash; the
+firmware patches above are the other half.
 
 ## Adding a firmware
 

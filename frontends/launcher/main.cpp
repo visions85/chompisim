@@ -3,8 +3,10 @@
  *  run the matching `chompi-sim[-gui]-<firmware>` executable next to them.
  *
  *  The firmware comes from --firmware NAME, else from the firmware binary on
- *  the --card folder, else from --cards DIR (the first firmware with a card
- *  there), else it is the first one built. --cards DIR is a folder of card
+ *  the --card folder (a card with several binaries boots the one chosen last,
+ *  else the first in boot order; the GUI then shows its boot window), else
+ *  from --cards DIR (the first firmware with a card there), else it is the
+ *  first one built. --cards DIR is a folder of card
  *  folders, one per firmware (wave, tape, tempo or wave-1.0 ...); it is
  *  turned into --card for the chosen firmware and passed on as well, so the
  *  GUI can switch firmware later. Every other option is passed through. */
@@ -54,7 +56,7 @@ int main(int argc, char** argv)
     }
     fw = Lower(fw);
     if(fw.empty() && !card.empty())
-        fw = DetectFirmware(card);
+        fw = DefaultBoot(card);
     if(fw.empty() && !cards.empty())
         for(const std::string& f : available)
             if(CardForFirmware(cards, "", f) != "")

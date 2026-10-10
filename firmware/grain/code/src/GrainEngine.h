@@ -189,7 +189,7 @@ namespace grain
         {
             DIR     dir;
             FILINFO fno;
-            if(f_opendir(&dir, "/") != FR_OK)
+            if(f_opendir(&dir, ".") != FR_OK) // the current directory: the root, or GRAIN/ on a shared card
                 return;
             std::vector<std::string> found;
             while(f_readdir(&dir, &fno) == FR_OK && fno.fname[0] != 0)

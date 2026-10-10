@@ -77,6 +77,12 @@ struct UiState
     int                                          sound = -1;      /**< the selected one, as the firmware reports it; -1 = not yet */
     bool                                         sound_menu = false; /**< the sound menu is dropped down */
     int                                          tour_step = -1;  /**< step of the guided tour being shown, -1 = none (see tour.h) */
+    bool                                         boot_window = false; /**< the simulated bootloader is waiting for a key to pick the firmware */
+    chompi_sim::Rgb                              boot_led{};      /**< every LED shows this while the boot window is up */
+    std::array<std::string, 4>                   boot_slots{};    /**< firmware names on the first four white caps ("" = none) */
+    int                                          boot_choice = -1; /**< the slot picked so far, or -1 */
+    std::string                                  boot_default;    /**< the firmware that boots with no key held */
+    float                                        boot_left = 0.f; /**< seconds left in the window */
     Hit                                          hover;         /**< control under the mouse */
     std::string                                  status;        /**< status line */
     std::vector<std::string>                     log;           /**< last firmware log lines, oldest first */

@@ -54,8 +54,11 @@ struct Options
     std::string cards;              /**< folder of card folders, one per firmware (for switching) */
     bool        tour    = false;    /**< show the guided tour at start */
     bool        no_tour = false;    /**< never show it by itself */
+    bool        booted  = false;    /**< the boot window already chose this firmware (set when it relaunches) */
     std::string argv0;
 };
+
+constexpr double kBootWindowS = 2.5; /**< the bootloader's window: how long a shared card waits for a key */
 
 constexpr float  kDegreesPerDetent = 15.f; /**< 24 detents per turn */
 constexpr float  kDragPixelsPerDetent = 6.f; /**< mouse drag distance per detent, logical pixels */
@@ -84,6 +87,8 @@ void PrintUsage(const char* argv0)
                 "  --tour                show the guided tour of the panel at start (it shows by itself the first\n"
                 "                        time a firmware runs; the ? in the bar shows it any time)\n"
                 "  --no-tour             never show the tour by itself\n"
+                "  --booted              skip the boot window of a card that holds several firmwares (the\n"
+                "                        window passes this when it relaunches into the chosen one)\n"
                 "  --help                this text\n",
                 argv0);
 }
@@ -138,6 +143,8 @@ int ParseArgs(int argc, char** argv, Options& o)
             o.tour = true;
         else if(a == "--no-tour")
             o.no_tour = true;
+        else if(a == "--booted")
+            o.booted = true;
         else if(a == "--cards")
         {
             if(!value(v))
@@ -226,6 +233,10 @@ constexpr PianoKeyMap kPianoMap[gui::kPianoSpan] = {
     {SDL_SCANCODE_P, 15}, {SDL_SCANCODE_SEMICOLON, 16}, {SDL_SCANCODE_APOSTROPHE, 17},
 };
 constexpr SDL_Scancode kOctaveDownKey = SDL_SCANCODE_Z, kOctaveUpKey = SDL_SCANCODE_X;
+
+/** The boot window of a shared card: the first four white keys (a s d f, caps 1 to 4) pick the firmware. */
+constexpr SDL_Scancode kBootKeys[4]      = {SDL_SCANCODE_A, SDL_SCANCODE_S, SDL_SCANCODE_D, SDL_SCANCODE_F};
+constexpr int          kBootSemitones[4] = {0, 2, 4, 5};
 
 int PianoSpanSemitone(SDL_Scancode sc)
 {
@@ -463,6 +474,17 @@ class App
         exe_dir_      = ExecutableDir(o.argv0.c_str());
         ui_.firmwares_built = AvailableFirmwares(exe_dir_, "chompi-sim-gui");
 
+        // a card that holds several firmwares: the boot window picks one (scripts/make-multi-card.py)
+        on_card_    = DetectFirmwares(o.card);
+        boot_phase_ = on_card_.size() > 1 && !o.booted;
+        for(size_t i = 0; i < ui_.boot_slots.size() && i < BootOrder().size(); i++)
+        {
+            const std::string& id = BootOrder()[i];
+            if(std::find(on_card_.begin(), on_card_.end(), id) != on_card_.end())
+                ui_.boot_slots[i] = gui::FirmwareByName(id).name[0] ? gui::FirmwareByName(id).name : id;
+        }
+        ui_.boot_default = gui::FirmwareByName(ui_.firmware).name; // no key: the one the launcher picked
+
         // the sound menu, for a firmware that selects sounds over MIDI
         const gui::FirmwareInfo& fw = gui::FirmwareByName(ui_.firmware);
         sound_cc_                   = fw.sound_cc;
@@ -487,11 +509,17 @@ class App
             log_.push_back(std::string(f.name) + " is not built (no chompi-sim-gui-" + f.id + " next to this executable)");
             return;
         }
-        std::string card = CardForFirmware(opt_.cards, opt_.card, f.id);
-        if(DetectFirmware(card) != f.id)
+        const bool  shared = std::find(on_card_.begin(), on_card_.end(), f.id) != on_card_.end() && on_card_.size() > 1;
+        std::string card   = shared ? opt_.card : CardForFirmware(opt_.cards, opt_.card, f.id);
+        if(!shared && DetectFirmware(card) != f.id)
             std::fprintf(stderr, "no card folder for %s found; booting it with %s\n", f.name, card.c_str());
         std::vector<std::string> args = {exe_dir_ + "/chompi-sim-gui-" + f.id, "--card", card, "--pair", std::to_string(pair_),
                                          "--scale", std::to_string(opt_.scale), "--gain", std::to_string(opt_.input_gain)};
+        if(shared)
+        {
+            SaveBootChoice(opt_.card, f.id); // what the bootloader would remember
+            args.push_back("--booted");
+        }
         if(!opt_.cards.empty())
             args.insert(args.end(), {"--cards", opt_.cards});
         if(opt_.no_audio)
@@ -531,10 +559,95 @@ class App
         if(!InitVideo())
             return 1;
         InitAudio();
-        if(opt_.tour || (!opt_.no_tour && !TourSeen()))
-            StartTour();
+        if(boot_phase_)
+            BeginBoot();
+        else
+            MaybeStartTour();
         Loop();
         return 0;
+    }
+
+    void MaybeStartTour()
+    {
+        if(opt_.tour || (!opt_.no_tour && !TourSeen()))
+            StartTour();
+    }
+
+    // ---- the boot window of a shared card: what the bootloader would do with a key held at power-on ----
+
+    void BeginBoot()
+    {
+        boot_until_     = kBootWindowS; // Loop() counts from its start
+        ui_.boot_window = true;
+        NewBootColour();
+        std::string keys;
+        for(size_t i = 0; i < ui_.boot_slots.size(); i++)
+            if(!ui_.boot_slots[i].empty())
+                keys += " " + std::to_string(i + 1) + " " + ui_.boot_slots[i];
+        log_.push_back("boot window: hold a white key to choose the firmware:" + keys);
+        Debug("boot window");
+    }
+
+    /** The bootloader fades every LED through random colours; the same here. */
+    void NewBootColour()
+    {
+        const uint32_t t = uint32_t(SDL_GetTicks());
+        boot_r_          = float(t % 66) / 66.f;
+        boot_g_          = float((t / 7) % 53) / 53.f;
+        boot_b_          = float((t / 13) % 36) / 36.f;
+    }
+
+    void ServiceBoot(double dt)
+    {
+        if(!boot_phase_)
+            return;
+        boot_bright_ += boot_inc_ * float(dt);
+        if(boot_bright_ > 1.f)
+            boot_inc_ = -boot_inc_;
+        else if(boot_bright_ < 0.f)
+        {
+            NewBootColour();
+            boot_inc_ = -boot_inc_;
+        }
+        const float b   = std::clamp(boot_bright_, 0.f, 1.f);
+        ui_.boot_led    = Rgb{uint8_t(boot_r_ * b * 255), uint8_t(boot_g_ * b * 255), uint8_t(boot_b_ * b * 255)};
+        ui_.boot_left   = float(std::max(0.0, boot_until_ - now_s_));
+        ui_.boot_choice = boot_choice_;
+        // a key held from before the window opened never sends a key-down: poll the keyboard too
+        const Uint8* keys = SDL_GetKeyboardState(nullptr);
+        for(int i = 0; i < 4; i++)
+            if(keys[kBootKeys[i]])
+                ChooseBoot(i);
+        if(now_s_ >= boot_until_)
+            FinishBoot();
+    }
+
+    void ChooseBoot(int slot)
+    {
+        if(slot < 0 || slot >= int(ui_.boot_slots.size()) || ui_.boot_slots[size_t(slot)].empty())
+            return;
+        if(boot_choice_ != slot)
+            Debug("boot choice %d (%s)", slot, BootOrder()[size_t(slot)].c_str());
+        boot_choice_ = slot;
+    }
+
+    /** The window is over: boot the chosen firmware, here or in a relaunch. */
+    void FinishBoot()
+    {
+        // no key: this firmware, the one the launcher picked (the remembered choice, or --firmware)
+        const std::string choice = boot_choice_ >= 0 ? BootOrder()[size_t(boot_choice_)] : ui_.firmware;
+        boot_phase_     = false;
+        ui_.boot_window = false;
+        SaveBootChoice(opt_.card, choice);
+        if(choice != ui_.firmware)
+        {
+            for(int i = 0; i < int(sizeof(gui::kFirmwares) / sizeof(gui::kFirmwares[0])); i++)
+                if(choice == gui::kFirmwares[i].id)
+                    SwitchFirmware(i); // relaunches; returns only when that firmware is not built
+            log_.push_back(choice + " is not built; booting " + ui_.firmware);
+        }
+        StartFirmware();
+        MaybeStartTour();
     }
 
   private:
@@ -808,7 +921,8 @@ class App
                 std::fprintf(stderr, "%s\n", audio_desc_.c_str());
                 if(opt_.mic)
                     OpenMic();
-                StartFirmware();
+                if(!boot_phase_)
+                    StartFirmware();
                 return;
             }
             std::fprintf(stderr, "SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
@@ -817,7 +931,8 @@ class App
         null_audio_ = true;
         audio_desc_ = "audio none (null clock)";
         std::fprintf(stderr, "running on the null audio clock\n");
-        StartFirmware();
+        if(!boot_phase_)
+            StartFirmware();
     }
 
     void Shutdown()
@@ -944,6 +1059,14 @@ class App
     void MousePress(const gui::Hit& h)
     {
         MouseRelease(); // only one control at a time
+        if(boot_phase_)
+        {
+            if(h.kind == gui::HitKind::PianoKey)
+                for(int i = 0; i < 4; i++)
+                    if(h.index == kBootSemitones[i])
+                        ChooseBoot(i);
+            return;
+        }
         if(ui_.tour_step >= 0)
         {
             switch(h.kind)
@@ -1037,6 +1160,17 @@ class App
         bool        down = e.type == SDL_KEYDOWN;
         SDL_Keycode k    = e.keysym.sym;
         int         enc = 0, detents = 0;
+        if(boot_phase_)
+        {
+            // the boot window: the first four white keys choose, nothing else reaches the instrument
+            if(down && k == SDLK_ESCAPE)
+                running_ = false;
+            else if(down)
+                for(int i = 0; i < 4; i++)
+                    if(e.keysym.scancode == kBootKeys[i])
+                        ChooseBoot(i);
+            return;
+        }
         if(ui_.tour_step >= 0
            && (k == SDLK_RIGHT || k == SDLK_LEFT || k == SDLK_PAGEDOWN || k == SDLK_PAGEUP || k == SDLK_ESCAPE))
         {
@@ -1242,6 +1376,13 @@ class App
                       static_cast<unsigned long long>(st.blocks_rendered), Sim::Get().NowMs(), st.max_block_us,
                       Sim::Get().FirmwareRunning() ? "running" : "stopped");
         ui_.status = buf;
+        if(boot_phase_)
+        {
+            char bb[160];
+            std::snprintf(bb, sizeof bb, "BOOT WINDOW %.1f s   hold a white key to choose the firmware; no key boots %s", ui_.boot_left,
+                          ui_.boot_default.empty() ? "the last choice" : ui_.boot_default.c_str());
+            ui_.status = bb;
+        }
         if(piano_octave_ > 0)
             ui_.status += "   keys: octave up (z = down)";
 
@@ -1277,6 +1418,8 @@ class App
             while(SDL_PollEvent(&e))
                 HandleEvent(e);
             ServiceTimedPush();
+            ServiceBoot(elapsed - last_s_);
+            last_s_ = elapsed;
 
             UpdateStatus();
             panel_->Draw(ui_);
@@ -1340,6 +1483,12 @@ class App
     double                      now_s_           = 0;
     double                      push_release_at_ = 0;
     int                         push_enc_        = -1;
+    std::vector<std::string>    on_card_;             /**< firmwares the card holds (DetectFirmwares) */
+    bool                        boot_phase_      = false; /**< the boot window is up; the firmware has not started */
+    double                      boot_until_      = 0;
+    double                      last_s_          = 0;
+    int                         boot_choice_     = -1;
+    float                       boot_bright_     = 0.f, boot_inc_ = 0.8f, boot_r_ = 0.f, boot_g_ = 0.f, boot_b_ = 0.f;
     int                         sound_cc_        = 0; /**< the firmware's sound select CC, 0 = none */
     int                         sound_ch_        = 0; /**< MIDI channel the firmware reports on */
     uint8_t                     midi_status_     = 0; /**< MIDI output parser: running status and data bytes */
