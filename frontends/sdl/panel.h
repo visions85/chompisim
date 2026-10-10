@@ -37,6 +37,10 @@ enum class HitKind
     InputButton, /**< in the bar: 0 load a sound, 1 play/stop, 2 microphone, 3 aux jack */
     SoundButton, /**< in the bar: opens and closes the sound menu */
     SoundRow,    /**< a row of the open sound menu: index into UiState::sounds */
+    HelpButton,  /**< the ? in the bar: starts the guided tour */
+    TourNext,    /**< while the tour is up: its NEXT button, or anywhere else in the window */
+    TourBack,    /**< the tour's BACK button */
+    TourClose,   /**< the tour's SKIP / DONE button */
 };
 
 struct Hit
@@ -72,6 +76,7 @@ struct UiState
     std::vector<SoundEntry>                      sounds;          /**< the firmware's sounds (firmwares with a sound list) */
     int                                          sound = -1;      /**< the selected one, as the firmware reports it; -1 = not yet */
     bool                                         sound_menu = false; /**< the sound menu is dropped down */
+    int                                          tour_step = -1;  /**< step of the guided tour being shown, -1 = none (see tour.h) */
     Hit                                          hover;         /**< control under the mouse */
     std::string                                  status;        /**< status line */
     std::vector<std::string>                     log;           /**< last firmware log lines, oldest first */

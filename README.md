@@ -106,10 +106,27 @@ slot each white key selects. A firmware with a sound list (GRAIN) gets a
 SOUND menu in the bar: the card's sounds and the recording slot, with the
 selected one as the firmware reports it; picking a row sends the choice to
 the firmware over its MIDI input. A key map overlay, shown at start
-and toggled with `/` or `?`, shades the instrument, prints each piano key's
+and toggled with `/`, shades the instrument, prints each piano key's
 letter on its cap and draws a description box with an arrow to every switch
 and knob; the arrow-key note moves to whichever small knob was touched last.
 No artwork or logos are reproduced.
+
+A guided tour runs the first time each firmware starts in the window
+(`docs/gui-tour.png`): the instrument is shaded and one note at a time
+explains a control, with an arrow to it and the control drawn in a frame:
+the mode switch, the CHOMPI key, the keys, each knob's pages and shift
+functions, the looper or sequencer keys, the shift menu on the black keys,
+the LEDs, then the simulator's own bar. The wording follows the official
+guides, the TAPE 2.0 Guidebook and Mini Guide, the TEMPO Guidebook and the
+WAVE quick start from chompiclub.com/manuals, with the simulator's keys
+added in amber. Click anywhere or press the right arrow for the next note,
+the left arrow for the previous one, Escape or SKIP TOUR to leave; the
+instrument's keys keep working meanwhile, so you can try what a note says.
+The `?` at the right end of the bar shows the tour again any time. Which
+firmwares' tours were seen is kept in SDL's per-user folder
+(`~/Library/Application Support/chompi-sim/tour-seen` on macOS,
+`~/.local/share/chompi-sim/tour-seen` on Linux); `--tour` shows the tour
+at start regardless and `--no-tour` never shows it by itself.
 
 | Control | Computer |
 |---|---|
@@ -123,7 +140,8 @@ No artwork or logos are reproduced.
 | Transport knob / volume knob | `[` `]` / `-` `=` |
 | Last touched small knob | Left / Right arrows |
 | Push encoders SW1 to SW6 | F1 to F6 |
-| Key map overlay | `/` or `?` (toggle; `--no-keymap` starts without it) |
+| Key map overlay | `/` (toggle; `--no-keymap` starts without it) |
+| Guided tour | `?` in the bar; right and left arrows step through it, Escape leaves |
 | Sound menu (GRAIN) | click SOUND in the bar, then a row; Escape or a click elsewhere closes it |
 | Quit | Escape |
 
@@ -140,7 +158,7 @@ Command line: `--card DIR` (default `card`), `--cards DIR` (a folder of card
 folders, one per firmware), `--firmware wave|tape|tempo|grain` (launcher), `--no-audio`
 (run without a sound card), `--pair 0|1` (send the headphone or the line output
 to the sound card, default line), `--scale F`, `--screenshot FILE.bmp`,
-`--exit-after SECONDS`, `--no-keymap`.
+`--exit-after SECONDS`, `--no-keymap`, `--tour`, `--no-tour`.
 
 The output of the firmware is quiet at the WAVE defaults (the final compressor
 is a menu-page setting); turn the volume knob up or use the firmware's menu, as
@@ -187,7 +205,8 @@ the audio, the MIDI output and the key LED. `docs/demo-wave-factory-card.wav`
 was rendered this way from `examples/demo.txt` (normalised afterwards).
 `docs/gui-wave.png` shows the window with the key map overlay and WAVE holding
 a C major chord, `docs/gui-tape.png` the plain panel with TAPE holding the same
-chord, `docs/gui-grain.png` GRAIN with its playheads on the keys, and
+chord, `docs/gui-grain.png` GRAIN with its playheads on the keys and its sound
+menu open, `docs/gui-tour.png` a step of the guided tour on TAPE, and
 `docs/gui-stub.png` the stand-in core used to develop the front-end.
 
 ## Sampling: sounds into the inputs

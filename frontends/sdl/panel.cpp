@@ -16,6 +16,7 @@
 #include "panel.h"
 #include "firmware_info.h"
 #include "font.h"
+#include "tour.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -158,8 +159,8 @@ constexpr float kLogY    = 392 + kBarH;
 constexpr float kLogDy   = 10;
 constexpr float kTextX   = 16;
 
-const char* const kHint1 = "/ = key map   PIANO  a s d f g h j k l ; ' = white keys   w e t y u o p = black keys   "
-                           "z x = octave down/up   SPACE play   RETURN loop   L-SHIFT chompi (hold)   TAB mode   ESC quit";
+const char* const kHint1 = "/ key map   ? in the bar = tour   PIANO a s d f g h j k l ; ' = white   w e t y u o p = black   "
+                           "z x = octave   SPACE play   RETURN loop   L-SHIFT chompi (hold)   TAB mode   ESC quit";
 const char* const kHint2 = "KNOBS  drag or scroll = turn   click = push   right-click = hold   [ ] transport   - = volume   "
                            "LEFT/RIGHT last small knob   F1-F6 push   F7/F8 input play/stop  F9 mic  F10 load";
 /** Hint lines while the key map overlay is up. */
@@ -456,55 +457,51 @@ void DrawLed(Canvas& cv, float cx, float cy, float r, Rgb c)
     cv.Disc(cx - r * 0.3f, cy - r * 0.3f, r * 0.3f, SDL_Color{255, 255, 255, 110});
 }
 
+/** One piano key, lit by its LED and, with the mode switch down, carrying its menu-layer name. */
+void DrawPianoKey(Canvas& cv, int semi, const UiState& st)
+{
+    const PianoKeyDef& g       = kPianoGeom[semi];
+    SDL_FRect          r       = PianoKeyRect(semi);
+    bool               pressed = Sim::Get().ButtonPressed(kPianoKeys[semi]);
+    bool               hover   = st.hover == Hit{HitKind::PianoKey, semi};
+    Rgb                led     = Sim::Get().KeyLed(kPianoKeyLed[semi]);
+    SDL_Color          face    = Tint(g.upper ? kUpperFace : kLowerFace, led, 0.75f);
+    float              dy      = pressed ? kKeyPressDy : 0.f;
+    float              b       = Brightness(led);
+    if(b > 0.f)
+        cv.Glow(r.x + r.w / 2, r.y + r.h / 2 + dy, r.w * 1.25f, led, 0.55f, true);
+    DrawKeyCap(cv, r, face, g.upper ? kUpperSide : kLowerSide, pressed, hover);
+    if(b > 0.f)
+    {
+        // the cap is lit from below: a bright window of the LED colour, strongest in the middle
+        SDL_Color lit = {uint8_t(led.r / b), uint8_t(led.g / b), uint8_t(led.b / b), uint8_t(120 + 135 * b)};
+        float     in  = 7.f;
+        cv.RoundRect(r.x + in, r.y + in + dy, r.w - 2 * in, r.h - 2 * in - kKeyLipH + (pressed ? 3.f : 0.f), kCapRad - 2, lit);
+        cv.Glow(r.x + r.w / 2, r.y + r.h / 2 + dy, r.w * 0.55f, led, 0.5f, true);
+    }
+    // the menu layer (mode switch down, CHOMPI held): what the key does in it
+    if(Sim::Get().ToggleDown())
+    {
+        const FirmwareInfo& fw = FirmwareByName(st.firmware);
+        int                 black = 0, white = 0;
+        for(int s = 0; s <= semi; s++)
+            (kPianoGeom[s].upper ? black : white)++;
+        std::string cue;
+        if(g.upper)
+            cue = fw.menu_black[black - 1] ? fw.menu_black[black - 1] : "";
+        else if(white == 15)
+            cue = fw.menu_white15 ? fw.menu_white15 : "";
+        else if(fw.menu_white)
+            cue = std::string(fw.menu_white) + " " + std::to_string(white);
+        if(!cue.empty())
+            cv.Text(r.x + r.w / 2, r.y + 8 + dy, 1, kMenuCue, cue, 0);
+    }
+}
+
 void DrawPianoKeys(Canvas& cv, const UiState& st)
 {
     for(int semi = 0; semi < 25; semi++)
-    {
-        const PianoKeyDef& g       = kPianoGeom[semi];
-        SDL_FRect          r       = PianoKeyRect(semi);
-        bool               pressed = Sim::Get().ButtonPressed(kPianoKeys[semi]);
-        bool               hover   = st.hover == Hit{HitKind::PianoKey, semi};
-        Rgb                led     = Sim::Get().KeyLed(kPianoKeyLed[semi]);
-        SDL_Color          face    = Tint(g.upper ? kUpperFace : kLowerFace, led, 0.75f);
-        float              dy      = pressed ? kKeyPressDy : 0.f;
-        float              b       = Brightness(led);
-        if(b > 0.f)
-            cv.Glow(r.x + r.w / 2, r.y + r.h / 2 + dy, r.w * 1.25f, led, 0.55f, true);
-        DrawKeyCap(cv, r, face, g.upper ? kUpperSide : kLowerSide, pressed, hover);
-        if(b > 0.f)
-        {
-            // the cap is lit from below: a bright window of the LED colour, strongest in the middle
-            SDL_Color lit = {uint8_t(led.r / b), uint8_t(led.g / b), uint8_t(led.b / b), uint8_t(120 + 135 * b)};
-            float     in  = 7.f;
-            cv.RoundRect(r.x + in, r.y + in + dy, r.w - 2 * in, r.h - 2 * in - kKeyLipH + (pressed ? 3.f : 0.f), kCapRad - 2, lit);
-            cv.Glow(r.x + r.w / 2, r.y + r.h / 2 + dy, r.w * 0.55f, led, 0.5f, true);
-        }
-    }
-    // the menu layer (mode switch down, CHOMPI held): what the keys do in it
-    if(Sim::Get().ToggleDown())
-    {
-        const FirmwareInfo& fw    = FirmwareByName(st.firmware);
-        int                 black = 0, white = 0;
-        for(int semi = 0; semi < 25; semi++)
-        {
-            const PianoKeyDef& g = kPianoGeom[semi];
-            SDL_FRect          r = PianoKeyRect(semi);
-            float              dy = Sim::Get().ButtonPressed(kPianoKeys[semi]) ? kKeyPressDy : 0.f;
-            std::string        cue;
-            if(g.upper)
-                cue = fw.menu_black[black] ? fw.menu_black[black] : "", black++;
-            else
-            {
-                white++;
-                if(white == 15)
-                    cue = fw.menu_white15 ? fw.menu_white15 : "";
-                else if(fw.menu_white)
-                    cue = std::string(fw.menu_white) + " " + std::to_string(white);
-            }
-            if(!cue.empty())
-                cv.Text(r.x + r.w / 2, r.y + 8 + dy, 1, kMenuCue, cue, 0);
-        }
-    }
+        DrawPianoKey(cv, semi, st);
 }
 
 void DrawKnob(Canvas& cv, const KnobDef& k, const UiState& st)
@@ -702,6 +699,13 @@ bool HasSoundMenu(const UiState& st)
 {
     return FirmwareByName(st.firmware).sound_cc != 0;
 }
+
+/** The ? at the right end of the bar: the guided tour. */
+constexpr float kHelpW = 20.f;
+SDL_FRect       HelpButtonRect()
+{
+    return SDL_FRect{float(kPanelW) - 16 - kHelpW, kTabY, kHelpW, kTabH};
+}
 SDL_FRect SoundButtonRect()
 {
     return SDL_FRect{kSoundX, kTabY, kSoundW, kTabH};
@@ -820,15 +824,378 @@ void DrawBar(Canvas& cv, const UiState& st)
     if(lvl > 0.f)
         cv.RoundRect(kMeterX + 2, kTabY + 6, (kMeterW - 4) * lvl, kTabH - 12, 2.f,
                      lvl > 0.95f ? SDL_Color{236, 72, 60, 255} : SDL_Color{96, 206, 120, 255});
+    const SDL_FRect   help = HelpButtonRect();
+    const std::string card = st.card_name.empty() ? "" : "card: " + st.card_name;
+    const float       cardX = help.x - 8 - float(TextWidth(card, 1)); // right-aligned before the ?
     if(loaded)
     {
         std::string name = st.input.name.size() > 14 ? st.input.name.substr(0, 12) + ".." : st.input.name;
         char        t[48];
         std::snprintf(t, sizeof t, " %.1f/%.1fs", st.input.position_s, st.input.length_s);
-        cv.Text(kMeterX + kMeterW + 8, kTabY + 5, 1, kBarText, name + t);
+        cv.Text(kMeterX + kMeterW + 8, kTabY + 5, 1, kBarText, Fit(name + t, cardX - 8 - (kMeterX + kMeterW + 8)));
     }
-    if(!st.card_name.empty())
-        cv.Text(float(kPanelW) - 16, kTabY + 5, 1, kHintColor, "card: " + st.card_name, 1);
+    if(!card.empty())
+        cv.Text(cardX, kTabY + 5, 1, kHintColor, card);
+    DrawBarButton(cv, help, "?", st.tour_step >= 0, true, st.hover == Hit{HitKind::HelpButton, 0}, accent);
+}
+
+
+// ---------------------------------------------------------------------------
+// The guided tour (tour.h): the window shaded, the step's control drawn on
+// top with a frame around it, and a note with an arrow to it
+// ---------------------------------------------------------------------------
+constexpr float     kNoteW      = 440.f;
+constexpr float     kNotePad    = 10.f;
+constexpr float     kNoteLineH  = 10.f; /**< body lines, 1 px font */
+constexpr float     kNoteTitleH = 14.f; /**< 2 px font */
+constexpr float     kNoteGap    = 24.f; /**< between the note and its target: room for the arrow */
+constexpr float     kFramePad   = 6.f;
+constexpr SDL_Color kNoteBg     = {30, 32, 40, 250};
+constexpr SDL_Color kNoteText   = {236, 236, 230, 255};
+constexpr SDL_Color kNoteDim    = {150, 154, 168, 255};
+constexpr uint8_t   kTourDim    = 150; /**< alpha of the shade over the window */
+
+/** Semitone of the i-th white or black key, left to right. */
+int WhiteSemitone(int i)
+{
+    int n = 0;
+    for(int s = 0; s < 25; s++)
+        if(!kPianoGeom[s].upper && n++ == i)
+            return s;
+    return 24;
+}
+int BlackSemitone(int i)
+{
+    int n = 0;
+    for(int s = 0; s < 25; s++)
+        if(kPianoGeom[s].upper && n++ == i)
+            return s;
+    return 1;
+}
+
+void Unite(SDL_FRect& a, const SDL_FRect& b)
+{
+    if(a.w <= 0)
+    {
+        a = b;
+        return;
+    }
+    const float x0 = std::min(a.x, b.x), y0 = std::min(a.y, b.y);
+    const float x1 = std::max(a.x + a.w, b.x + b.w), y1 = std::max(a.y + a.h, b.y + b.h);
+    a = {x0, y0, x1 - x0, y1 - y0};
+}
+
+/** The panel LED above a small knob, by PanelLed index; -1 for the transport knob. */
+int LedOfKnob(int enc)
+{
+    switch(enc)
+    {
+        case ENC_SW4: return 1;
+        case ENC_SW1: return 2;
+        case ENC_SW2: return 3;
+        case ENC_SW3: return 4;
+        case ENC_SW6: return 9;
+        default: return -1;
+    }
+}
+int LedOfFuncKey(int button)
+{
+    return button == KEY_CHOMPI ? 0 : button == KEY_PLAY ? 7 : 8;
+}
+SDL_FRect LedRect(int i)
+{
+    const PanelLedDef& l = kPanelLeds[i];
+    const float        r = l.r_mm * kMmPx + 2;
+    return SDL_FRect{X(l.x_mm) - r, Y(l.y_mm) - r, 2 * r, 2 * r};
+}
+void DrawPanelLed(Canvas& cv, int i)
+{
+    DrawLed(cv, X(kPanelLeds[i].x_mm), Y(kPanelLeds[i].y_mm), kPanelLeds[i].r_mm * kMmPx, Sim::Get().PanelLed(i));
+}
+
+/** Where a target is on the canvas (w <= 0: the step has none). */
+SDL_FRect TargetRect(const TourTarget& t)
+{
+    SDL_FRect r{0, 0, 0, 0};
+    switch(t.kind)
+    {
+        case TourTarget::Toggle:
+        {
+            const ToggleDef& g = kToggle;
+            r = {X(g.x_mm) - g.thumb_w / 2, Y(g.y_mm) - g.h / 2, g.thumb_w, g.h + 16}; // with its label
+            break;
+        }
+        case TourTarget::FuncKey:
+            for(const FuncKeyDef& f : kFuncKeys)
+                if(f.button == t.a)
+                {
+                    r = FuncKeyRect(f);
+                    r.h += 12; // the cue under it
+                    Unite(r, LedRect(LedOfFuncKey(f.button)));
+                }
+            break;
+        case TourTarget::Knob:
+            for(const KnobDef& k : kKnobs)
+                if(k.enc == t.a)
+                {
+                    const float R = k.r_mm * kMmPx;
+                    r             = {X(k.x_mm) - R, Y(k.y_mm) - R, 2 * R, 2 * R + 24}; // with its labels
+                    if(k.big)
+                    {
+                        Unite(r, LedRect(5));
+                        Unite(r, LedRect(6));
+                    }
+                    else
+                        Unite(r, LedRect(LedOfKnob(k.enc)));
+                }
+            break;
+        case TourTarget::WhiteKeys:
+            for(int i = t.a; i <= t.b; i++)
+                Unite(r, PianoKeyRect(WhiteSemitone(i)));
+            break;
+        case TourTarget::BlackKeys:
+            for(int i = t.a; i <= t.b; i++)
+                Unite(r, PianoKeyRect(BlackSemitone(i)));
+            break;
+        case TourTarget::Keyboard:
+            for(int s = 0; s < 25; s++)
+                Unite(r, PianoKeyRect(s));
+            break;
+        case TourTarget::PanelLeds:
+            for(int i = 0; i < kNumPanelLeds; i++)
+                Unite(r, LedRect(i));
+            break;
+        case TourTarget::Tabs:
+            for(int i = 0; i < int(sizeof(kFirmwares) / sizeof(kFirmwares[0])); i++)
+                Unite(r, TabRect(i));
+            r.x -= 72; // with the FIRMWARE label
+            r.w += 72;
+            break;
+        case TourTarget::Input: r = {kInputX, kTabY, kMeterX + kMeterW - kInputX, kTabH}; break;
+        case TourTarget::Sound:
+            r = SoundButtonRect();
+            r.w += r.x - kSoundLabelX;
+            r.x = kSoundLabelX;
+            break;
+        case TourTarget::Help: r = HelpButtonRect(); break;
+        case TourTarget::None: break;
+    }
+    return r;
+}
+
+/** The step's control, drawn again over the shade so it stands out. */
+void DrawTargetControls(Canvas& cv, const TourTarget& t, const UiState& st)
+{
+    switch(t.kind)
+    {
+        case TourTarget::Toggle: DrawToggle(cv, st); break;
+        case TourTarget::FuncKey:
+            for(const FuncKeyDef& f : kFuncKeys)
+                if(f.button == t.a)
+                {
+                    DrawFuncKey(cv, f, st);
+                    DrawPanelLed(cv, LedOfFuncKey(f.button));
+                }
+            break;
+        case TourTarget::Knob:
+            for(const KnobDef& k : kKnobs)
+                if(k.enc == t.a)
+                {
+                    DrawKnob(cv, k, st);
+                    if(k.big)
+                    {
+                        DrawPanelLed(cv, 5);
+                        DrawPanelLed(cv, 6);
+                    }
+                    else
+                        DrawPanelLed(cv, LedOfKnob(k.enc));
+                }
+            break;
+        case TourTarget::WhiteKeys:
+            for(int i = t.a; i <= t.b; i++)
+                DrawPianoKey(cv, WhiteSemitone(i), st);
+            break;
+        case TourTarget::BlackKeys:
+            for(int i = t.a; i <= t.b; i++)
+                DrawPianoKey(cv, BlackSemitone(i), st);
+            break;
+        case TourTarget::Keyboard:
+            for(int s = 0; s < 25; s++)
+                DrawPianoKey(cv, s, st);
+            break;
+        case TourTarget::PanelLeds:
+            for(int i = 0; i < kNumPanelLeds; i++)
+                DrawPanelLed(cv, i);
+            break;
+        default: break; // the bar is not shaded
+    }
+}
+
+void DrawFrame(Canvas& cv, SDL_FRect r, SDL_Color c)
+{
+    r.x -= kFramePad;
+    r.y -= kFramePad;
+    r.w += 2 * kFramePad;
+    r.h += 2 * kFramePad;
+    cv.Line(r.x, r.y, r.x + r.w, r.y, 2.5f, c);
+    cv.Line(r.x + r.w, r.y, r.x + r.w, r.y + r.h, 2.5f, c);
+    cv.Line(r.x + r.w, r.y + r.h, r.x, r.y + r.h, 2.5f, c);
+    cv.Line(r.x, r.y + r.h, r.x, r.y, 2.5f, c);
+}
+
+/** Word-wraps a text to `chars` columns; a newline in it starts a new line. */
+std::vector<std::string> Wrap(const char* text, int chars)
+{
+    std::vector<std::string> lines;
+    if(!text)
+        return lines;
+    std::string line, word;
+    auto        flush = [&]() {
+        if(word.empty())
+            return;
+        if(!line.empty() && int(line.size() + 1 + word.size()) > chars)
+        {
+            lines.push_back(line);
+            line.clear();
+        }
+        if(!line.empty())
+            line += ' ';
+        line += word;
+        word.clear();
+    };
+    for(const char* p = text; *p; p++)
+    {
+        if(*p == ' ')
+            flush();
+        else if(*p == '\n')
+        {
+            flush();
+            lines.push_back(line);
+            line.clear();
+        }
+        else
+            word += *p;
+    }
+    flush();
+    if(!line.empty())
+        lines.push_back(line);
+    return lines;
+}
+
+/** Where the note of the current step and its buttons go. */
+struct NoteLayout
+{
+    const TourStep*          step = nullptr;
+    int                      index = 0, count = 0;
+    SDL_FRect                box{0, 0, 0, 0}, back{0, 0, 0, 0}, next{0, 0, 0, 0}, close{0, 0, 0, 0};
+    SDL_FRect                target{0, 0, 0, 0};
+    bool                     below = false; /**< the note sits below its target */
+    std::vector<std::string> body, keys;
+};
+
+NoteLayout LayoutNote(const UiState& st)
+{
+    NoteLayout L;
+    const Tour tour = TourFor(st.firmware);
+    if(st.tour_step < 0 || tour.count == 0)
+        return L;
+    L.index = std::clamp(st.tour_step, 0, tour.count - 1);
+    L.count = tour.count;
+    L.step  = &tour.steps[L.index];
+    const int chars = int((kNoteW - 2 * kNotePad) / float(kGlyphAdv));
+    L.body          = Wrap(L.step->body, chars);
+    L.keys          = Wrap(L.step->keys, chars);
+    const float h = kNotePad + kNoteTitleH + 6 + L.body.size() * kNoteLineH
+                    + (L.keys.empty() ? 0.f : 4 + L.keys.size() * kNoteLineH) + 10 + kTabH + kNotePad;
+    L.target = TargetRect(L.step->target);
+    float x, y;
+    if(L.target.w > 0)
+    {
+        const float cx = L.target.x + L.target.w / 2, cy = L.target.y + L.target.h / 2;
+        L.below        = cy < kBarH + 150.f; // the top row and the bar: the note goes under them
+        y              = L.below ? L.target.y + L.target.h + kFramePad + kNoteGap : L.target.y - kFramePad - kNoteGap - h;
+        x              = cx - kNoteW / 2;
+    }
+    else
+    {
+        x = (float(kPanelW) - kNoteW) / 2;
+        y = kBarH + 70;
+    }
+    x     = std::clamp(x, 8.f, float(kPanelW) - 8 - kNoteW);
+    y     = std::clamp(y, kBarH + 6, float(kPanelH) - 6 - h);
+    L.box = {x, y, kNoteW, h};
+    const float by = y + h - kNotePad - kTabH;
+    L.back         = {x + kNotePad, by, 52, kTabH};
+    L.next         = {x + kNotePad + 58, by, 56, kTabH};
+    L.close        = {x + kNoteW - kNotePad - 72, by, 72, kTabH};
+    return L;
+}
+
+void DrawTour(Canvas& cv, const UiState& st)
+{
+    const NoteLayout L = LayoutNote(st);
+    if(!L.step)
+        return;
+    const FirmwareInfo& fw     = FirmwareByName(st.firmware);
+    const SDL_Color     accent = fw.name[0] ? fw.accent : SDL_Color{118, 122, 138, 255};
+    cv.FillRect(0, kBarH, float(kPanelW), float(kPanelH) - kBarH, SDL_Color{0, 0, 0, kTourDim});
+    DrawTargetControls(cv, L.step->target, st);
+    if(L.target.w > 0)
+        DrawFrame(cv, L.target, accent);
+
+    const SDL_FRect& b = L.box;
+    cv.RoundRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4, 8.f, accent);
+    cv.RoundRect(b.x, b.y, b.w, b.h, 6.f, kNoteBg);
+    float y = b.y + kNotePad;
+    if(float(TextWidth(L.step->title, 2)) <= b.w - 2 * kNotePad - 70) // room for the counter
+        cv.Text(b.x + kNotePad, y, 2, accent, L.step->title);
+    else
+        cv.Text(b.x + kNotePad, y + 4, 1, accent, L.step->title);
+    cv.Text(b.x + b.w - kNotePad, y + 4, 1, kNoteDim, std::to_string(L.index + 1) + " / " + std::to_string(L.count), 1);
+    y += kNoteTitleH + 6;
+    for(const std::string& line : L.body)
+    {
+        cv.Text(b.x + kNotePad, y, 1, kNoteText, line);
+        y += kNoteLineH;
+    }
+    if(!L.keys.empty())
+    {
+        y += 4;
+        for(const std::string& line : L.keys)
+        {
+            cv.Text(b.x + kNotePad, y, 1, kMapKey, line);
+            y += kNoteLineH;
+        }
+    }
+    const bool last = L.index + 1 >= L.count;
+    DrawBarButton(cv, L.back, "< BACK", false, L.index > 0, st.hover == Hit{HitKind::TourBack, 0}, accent);
+    DrawBarButton(cv, L.next, last ? "DONE" : "NEXT >", true, true, false, accent);
+    if(!last)
+        DrawBarButton(cv, L.close, "SKIP TOUR", false, true, st.hover == Hit{HitKind::TourClose, 0}, accent);
+    cv.Text(L.next.x + L.next.w + 10, L.next.y + 5, 1, kNoteDim, "click or > = next   < = back   ESC");
+
+    if(L.target.w > 0)
+    {
+        const float tx = L.target.x + L.target.w / 2;
+        const float ax = std::clamp(tx, b.x + 24, b.x + b.w - 24);
+        if(L.below)
+            cv.Arrow(ax, b.y - 3, tx, L.target.y + L.target.h + kFramePad + 4, accent);
+        else
+            cv.Arrow(ax, b.y + b.h + 3, tx, L.target.y - kFramePad - 4, accent);
+    }
+}
+
+/** While the tour is up every click is for it: its buttons, or "next". */
+Hit TourHit(const UiState& st, float x, float y)
+{
+    const NoteLayout L = LayoutNote(st);
+    if(!L.step)
+        return Hit{HitKind::TourNext, 0};
+    if(L.index > 0 && Contains(L.back, x, y))
+        return Hit{HitKind::TourBack, 0};
+    if(L.index + 1 < L.count && Contains(L.close, x, y))
+        return Hit{HitKind::TourClose, 0};
+    return Hit{HitKind::TourNext, 0};
 }
 
 } // namespace
@@ -858,10 +1225,13 @@ void Panel::Draw(const UiState& st)
     DrawBar(cv, st);
     DrawTextArea(cv, st);
     DrawSoundMenu(cv, st);
+    DrawTour(cv, st);
 }
 
 Hit Panel::HitTest(const UiState& st, float x, float y) const
 {
+    if(st.tour_step >= 0)
+        return TourHit(st, x, y);
     if(st.sound_menu && HasSoundMenu(st))
         for(int i = 0; i < int(st.sounds.size()); i++)
             if(Contains(SoundRowRect(i), x, y))
@@ -873,6 +1243,8 @@ Hit Panel::HitTest(const UiState& st, float x, float y) const
                 return Hit{HitKind::FirmwareTab, i};
         if(HasSoundMenu(st) && Contains(SoundButtonRect(), x, y))
             return Hit{HitKind::SoundButton, 0};
+        if(Contains(HelpButtonRect(), x, y))
+            return Hit{HitKind::HelpButton, 0};
         for(int i = 0; i < 4; i++)
             if(Contains(InputButtonRect(i), x, y))
                 return Hit{HitKind::InputButton, i};

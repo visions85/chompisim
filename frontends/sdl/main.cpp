@@ -22,6 +22,7 @@
 #include "firmware_info.h"
 #include "firmware_select.h"
 #include "panel.h"
+#include "tour.h"
 
 #ifndef CHOMPI_SIM_FIRMWARE
 #define CHOMPI_SIM_FIRMWARE ""
@@ -51,6 +52,8 @@ struct Options
     int         line_in    = -1;    /**< aux jack: 1 plugged, 0 not, -1 plugged while a sound is loaded */
     bool        mic        = false; /**< feed the computer's microphone */
     std::string cards;              /**< folder of card folders, one per firmware (for switching) */
+    bool        tour    = false;    /**< show the guided tour at start */
+    bool        no_tour = false;    /**< never show it by itself */
     std::string argv0;
 };
 
@@ -78,6 +81,9 @@ void PrintUsage(const char* argv0)
                 "  --mic                 feed the computer's microphone into the inputs\n"
                 "  --cards <dir>         folder of card folders (wave, tape, tempo or wave-1.0 ...): the firmware\n"
                 "                        tabs in the bar switch to the matching card; --firmware is accepted too\n"
+                "  --tour                show the guided tour of the panel at start (it shows by itself the first\n"
+                "                        time a firmware runs; the ? in the bar shows it any time)\n"
+                "  --no-tour             never show the tour by itself\n"
                 "  --help                this text\n",
                 argv0);
 }
@@ -128,6 +134,10 @@ int ParseArgs(int argc, char** argv, Options& o)
             o.line_in = 0;
         else if(a == "--mic")
             o.mic = true;
+        else if(a == "--tour")
+            o.tour = true;
+        else if(a == "--no-tour")
+            o.no_tour = true;
         else if(a == "--cards")
         {
             if(!value(v))
@@ -498,6 +508,10 @@ class App
             args.push_back("--line-in");
         else if(opt_.line_in == 0)
             args.push_back("--mic-in");
+        if(opt_.tour)
+            args.push_back("--tour");
+        if(opt_.no_tour)
+            args.push_back("--no-tour");
         std::fprintf(stderr, "switching to %s: %s --card %s\n", f.name, args[0].c_str(), card.c_str());
         Shutdown();
         std::vector<char*> cargs;
@@ -517,6 +531,8 @@ class App
         if(!InitVideo())
             return 1;
         InitAudio();
+        if(opt_.tour || (!opt_.no_tour && !TourSeen()))
+            StartTour();
         Loop();
         return 0;
     }
@@ -715,6 +731,11 @@ class App
             return false;
         }
         sdl_up_ = true;
+        if(char* p = SDL_GetPrefPath("", "chompi-sim")) // the per-user folder that remembers the tour
+        {
+            pref_dir_ = p;
+            SDL_free(p);
+        }
         SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
         int winW = int(std::lround(gui::kPanelW * opt_.scale));
         int winH = int(std::lround(gui::kPanelH * opt_.scale));
@@ -858,6 +879,63 @@ class App
         Debug("keyboard octave %d", piano_octave_);
     }
 
+    // ---- the guided tour (tour.h): shown the first time a firmware runs, and from the ? in the bar ----
+    std::string TourId() const { return ui_.firmware.empty() ? "stub" : ui_.firmware; }
+    std::string TourSeenFile() const { return pref_dir_.empty() ? "" : pref_dir_ + "tour-seen"; }
+
+    /** Whether this firmware's tour was finished or skipped before (one firmware id per line). */
+    bool TourSeen() const
+    {
+        if(TourSeenFile().empty())
+            return false;
+        std::ifstream f(TourSeenFile());
+        std::string   line;
+        while(std::getline(f, line))
+            if(line == TourId())
+                return true;
+        return false;
+    }
+
+    void MarkTourSeen()
+    {
+        if(TourSeenFile().empty() || TourSeen())
+            return;
+        std::ofstream f(TourSeenFile(), std::ios::app);
+        f << TourId() << "\n";
+    }
+
+    void StartTour()
+    {
+        ui_.tour_step  = 0;
+        ui_.sound_menu = false;
+        Debug("tour start");
+    }
+
+    void EndTour()
+    {
+        if(ui_.tour_step < 0)
+            return;
+        ui_.tour_step = -1;
+        MarkTourSeen();
+        Debug("tour end");
+    }
+
+    /** One step on (+1) or back (-1); going past the last step ends the tour. */
+    void TourMove(int d)
+    {
+        if(ui_.tour_step < 0)
+            return;
+        const int n = gui::TourFor(ui_.firmware).count;
+        const int s = ui_.tour_step + d;
+        if(s >= n)
+            EndTour();
+        else
+        {
+            ui_.tour_step = std::max(0, s);
+            Debug("tour step %d", ui_.tour_step);
+        }
+    }
+
     gui::Hit HitAtMouse(int wx, int wy) const
     {
         return panel_->HitTest(ui_, float(wx) / mouse_scale_, float(wy) / mouse_scale_);
@@ -866,6 +944,16 @@ class App
     void MousePress(const gui::Hit& h)
     {
         MouseRelease(); // only one control at a time
+        if(ui_.tour_step >= 0)
+        {
+            switch(h.kind)
+            {
+                case gui::HitKind::TourBack: TourMove(-1); break;
+                case gui::HitKind::TourClose: EndTour(); break;
+                default: TourMove(+1); break; // NEXT, or anywhere else in the window
+            }
+            return;
+        }
         if(ui_.sound_menu && h.kind != gui::HitKind::SoundRow && h.kind != gui::HitKind::SoundButton)
         {
             ui_.sound_menu = false; // a click anywhere else just closes the menu
@@ -890,6 +978,10 @@ class App
             case gui::HitKind::InputButton: InputButton(h.index); break;
             case gui::HitKind::SoundButton: ui_.sound_menu = !ui_.sound_menu; break;
             case gui::HitKind::SoundRow: SelectSound(h.index); break;
+            case gui::HitKind::HelpButton: StartTour(); break;
+            case gui::HitKind::TourNext:
+            case gui::HitKind::TourBack:
+            case gui::HitKind::TourClose:
             case gui::HitKind::None: break;
         }
     }
@@ -945,6 +1037,19 @@ class App
         bool        down = e.type == SDL_KEYDOWN;
         SDL_Keycode k    = e.keysym.sym;
         int         enc = 0, detents = 0;
+        if(ui_.tour_step >= 0
+           && (k == SDLK_RIGHT || k == SDLK_LEFT || k == SDLK_PAGEDOWN || k == SDLK_PAGEUP || k == SDLK_ESCAPE))
+        {
+            // the tour takes these; the instrument's own keys keep working meanwhile
+            if(down && !e.repeat)
+            {
+                if(k == SDLK_ESCAPE)
+                    EndTour();
+                else
+                    TourMove(k == SDLK_RIGHT || k == SDLK_PAGEDOWN ? +1 : -1);
+            }
+            return;
+        }
         if(TurnKey(k, last_small_knob_, enc, detents))
         {
             if(down) // auto-repeat is welcome here: holding the key keeps turning
@@ -1212,6 +1317,7 @@ class App
     SDL_AudioDeviceID           audio_dev_   = 0;
     SDL_AudioDeviceID           mic_dev_     = 0;
     std::string                 exe_dir_;
+    std::string                 pref_dir_;    /**< SDL's per-user folder, with a trailing separator */
     bool                        input_loaded_ = false;
     float                       input_level_  = 0.f;
     std::string                 audio_desc_;

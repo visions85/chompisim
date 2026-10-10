@@ -10,7 +10,7 @@ const FirmwareInfo kFirmwares[4] = {
     {"wave", "WAVE", "1.0", "wavetable synth + sequencer", {72, 128, 232, 255},
      {{"ATTACK", "PITCH LFO", nullptr},   // A
       {"RELEASE", "FILTER LFO", nullptr}, // B
-      {"DELAY FB", "FILTER", nullptr},    // C
+      {"DELAY / REVERB", "FILTER", nullptr}, // C: delay left of noon, reverb right of it
       {"PITCH", "WAVETABLE", nullptr},    // PITCH
       {"TEMPO", nullptr, nullptr},        // transport: tap or turn
       {"VOLUME", "PAN", nullptr}},        // volume
@@ -23,19 +23,19 @@ const FirmwareInfo kFirmwares[4] = {
       {"VERB+DELAY", "SATURATE", "FILTER"},
       {"PITCH", "LEVEL", nullptr},
       {"TAPE SPEED", nullptr, nullptr},
-      {"VOLUME", nullptr, nullptr}},
+      {"VOLUME", "INPUT GAIN", nullptr}},
      "RECORD", "LOOPER", "LOOPER REC",
      {"JAMMI BANK", "CUBBI BANK", "MIC IN", "AUX IN", "RESAMPLE", "FX PRE", "FX POST", "ERASE", "COPY", "SAVE"},
      "SLOT", "CHOMPI", 0, -1},
     {"tempo", "TEMPO", "1.0", "pattern generator, two engines", {76, 188, 118, 255},
      {{"START", "ATTACK", nullptr},
       {"END", "RELEASE", nullptr},
-      {"GRAIN", "GRAIN MIX", nullptr},
+      {"DUAL DELAY", "FX MIX", nullptr},  // the mix page is reached with a long press
       {"PITCH", "VOLUME", "FILTER"},
-      {"CLOCK DIV", nullptr, nullptr},
+      {"TEMPO", nullptr, nullptr},        // held + turn: clock division
       {"VOLUME", "INPUT GAIN", nullptr}},
      "RECORD", "PATTERN", "LATCH",
-     {"JAMMI BANK", "CUBBI BANK", "MIC IN", "AUX IN", "RESAMPLE", "A STATE", "B STATE", "ERASE", "COPY", "SAVE"},
+     {"CHROMA", "SLICE", "MIC IN", "AUX IN", "RESAMPLE", "SNAPSHOT A", "SNAPSHOT B", "ERASE", "COPY", "SAVE"},
      "SLOT", "CHOMPI", 0, -1},
     {"grain", "GRAIN", "0.1", "granular sampler + sequencer", {214, 88, 196, 255},
      {{"POSITION", "SPRAY", nullptr},
