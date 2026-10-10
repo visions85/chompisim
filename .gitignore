@@ -1,5 +1,7 @@
 # build trees
 build*/
+# packaged Windows builds (scripts/build-windows.sh)
+dist/
 # the CHOMPI checkout made by scripts/fetch-firmware.sh
 third_party/
 # working copies of factory cards (the firmware writes to them)

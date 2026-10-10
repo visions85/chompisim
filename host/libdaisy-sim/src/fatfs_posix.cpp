@@ -18,7 +18,11 @@
 #include <string>
 #include <vector>
 #include <sys/stat.h>
+#ifdef _WIN32
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 
 namespace fs = std::filesystem;
 
@@ -95,6 +99,16 @@ std::string HostPath(const char* path)
 }
 
 bool CardOk() { return g_mounted && g_card_present && fs::is_directory(g_root); }
+
+/** Cuts an open file to `len` bytes; 0 on success. */
+int TruncateTo(FILE* f, long long len)
+{
+#ifdef _WIN32
+    return _chsize_s(_fileno(f), len);
+#else
+    return ftruncate(fileno(f), off_t(len));
+#endif
+}
 
 FILE* Fp(FIL* fp) { return fp ? static_cast<FILE*>(fp->sim_fp) : nullptr; }
 
@@ -274,7 +288,7 @@ extern "C"
                 // FatFs expands the file when seeking past its end in write mode
                 FILE* f = Fp(fp);
                 std::fflush(f);
-                if(ftruncate(fileno(f), off_t(ofs)) == 0)
+                if(TruncateTo(f, ofs) == 0)
                     fp->obj.objsize = ofs;
                 else
                     ofs = fp->obj.objsize;
@@ -293,7 +307,7 @@ extern "C"
             return FR_DENIED;
         FILE* f = Fp(fp);
         std::fflush(f);
-        if(ftruncate(fileno(f), off_t(fp->fptr)) != 0)
+        if(TruncateTo(f, fp->fptr) != 0)
             return FR_DISK_ERR;
         fp->obj.objsize = fp->fptr;
         return FR_OK;

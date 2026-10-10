@@ -6,10 +6,20 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <cstdint>
 #include <fstream>
 #include <string>
 #include <vector>
-#ifdef __APPLE__
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <process.h>
+#include <windows.h>
+#elif defined(__APPLE__)
 #include <mach-o/dyld.h>
 #else
 #include <unistd.h>
@@ -17,6 +27,13 @@
 
 namespace chompi_sim
 {
+
+/** What an executable's name ends with on this platform. */
+#ifdef _WIN32
+constexpr const char* kExeSuffix = ".exe";
+#else
+constexpr const char* kExeSuffix = "";
+#endif
 
 /** The firmwares the simulator knows, in menu order. */
 inline const std::vector<std::string>& KnownFirmwares()
@@ -36,7 +53,12 @@ inline std::string Lower(std::string s)
 inline std::string ExecutableDir(const char* argv0)
 {
     std::string path;
-#ifdef __APPLE__
+#if defined(_WIN32)
+    char  buf[4096];
+    DWORD n = GetModuleFileNameA(nullptr, buf, DWORD(sizeof buf));
+    if(n > 0 && n < sizeof buf)
+        path.assign(buf, n);
+#elif defined(__APPLE__)
     char     buf[4096];
     uint32_t n = sizeof buf;
     if(_NSGetExecutablePath(buf, &n) == 0)
@@ -133,9 +155,76 @@ inline std::vector<std::string> AvailableFirmwares(const std::string& dir, const
 {
     std::vector<std::string> out;
     for(const std::string& fw : KnownFirmwares())
-        if(std::filesystem::exists(std::filesystem::path(dir) / (base + "-" + fw)))
+        if(std::filesystem::exists(std::filesystem::path(dir) / (base + "-" + fw + kExeSuffix)))
             out.push_back(fw);
     return out;
+}
+
+/** The executable `<dir>/<base>-<fw>` with the platform's suffix. */
+inline std::string FirmwareExecutable(const std::string& dir, const std::string& base, const std::string& fw)
+{
+    return dir + "/" + base + "-" + fw + kExeSuffix;
+}
+
+#ifdef _WIN32
+/** An argument quoted the way the Windows C runtime parses a command line. */
+inline std::string QuoteArgument(const std::string& a)
+{
+    if(!a.empty() && a.find_first_of(" \t\"") == std::string::npos)
+        return a;
+    std::string q = "\"";
+    size_t      backslashes = 0;
+    for(char c : a)
+    {
+        if(c == '\\')
+            backslashes++;
+        else if(c == '"')
+        {
+            q.append(2 * backslashes + 1, '\\'); // every backslash before a quote is doubled, then the quote escaped
+            q += '"';
+            backslashes = 0;
+        }
+        else
+        {
+            q.append(backslashes, '\\');
+            q += c;
+            backslashes = 0;
+        }
+    }
+    q.append(2 * backslashes, '\\'); // backslashes before the closing quote
+    q += '"';
+    return q;
+}
+#endif
+
+/** Runs `args[0]` with those arguments in place of this process: on POSIX the
+ *  process is replaced and the call returns only on failure; on Windows the
+ *  program is started and, with `wait`, the call returns its exit code, else 0
+ *  as soon as it runs. -1 when it could not be started. */
+inline int ExecProgram(const std::vector<std::string>& args, bool wait)
+{
+#ifdef _WIN32
+    std::vector<std::string> quoted;
+    for(const std::string& a : args)
+        quoted.push_back(QuoteArgument(a)); // the C runtime joins them with spaces and no quoting
+    std::vector<const char*> argv;
+    for(const std::string& q : quoted)
+        argv.push_back(q.c_str());
+    argv.push_back(nullptr);
+    const intptr_t rc = _spawnv(wait ? _P_WAIT : _P_NOWAIT, args[0].c_str(), argv.data());
+    if(rc == -1)
+        return -1;
+    return wait ? int(rc) : 0;
+#else
+    (void)wait;
+    std::vector<std::string> copy = args;
+    std::vector<char*>       argv;
+    for(std::string& a : copy)
+        argv.push_back(&a[0]);
+    argv.push_back(nullptr);
+    execv(args[0].c_str(), argv.data());
+    return -1;
+#endif
 }
 
 /** The card folder to boot firmware `fw` with: `<cards>/<fw>` or `<cards>/<fw>-*`

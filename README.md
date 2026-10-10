@@ -82,6 +82,35 @@ that). Firmware that keeps the bank's base address in a variable, as TEMPO
 does, is patched to take the simulator's 64 MB stand-in block instead, so all
 three firmwares run the same on both systems.
 
+### Windows
+
+Every push to `main` builds the simulator on Windows (GitHub Actions, the
+`windows` workflow) and attaches the folder to copy over as the
+`chompi-sim-windows` artifact of the run: the executables, `SDL2.dll` and the
+MinGW runtime next to them, the card scripts, the examples and this README.
+Put the factory cards next to them as `cards` (`RUN-ME.txt` in the folder
+says how) and run `chompi-sim-gui.exe --cards cards` from a command prompt.
+The file dialog is the native one, the tour's flag lives in
+`%APPDATA%\chompi-sim\tour-seen`, and switching firmware (the tabs, the boot
+window) starts the other executable and closes this one, as on the other
+platforms. The card scripts need Python 3.
+
+To build it yourself on Windows, use MSYS2's UCRT64 shell:
+
+```sh
+pacman -S git python mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-cmake \
+          mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-SDL2
+scripts/fetch-firmware.sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
+scripts/package-windows.sh build dist/chompi-sim-windows /ucrt64/bin   # the folder with its DLLs
+```
+
+From Linux or macOS, `scripts/build-windows.sh` cross-compiles the same thing
+with MinGW-w64 (`apt install g++-mingw-w64-x86-64-posix` or
+`brew install mingw-w64`), fetching SDL2's MinGW package into `third_party/`,
+and packs `dist/chompi-sim-windows.zip`. MSVC is not a target: the firmware
+sources rely on GNU C++ extensions.
+
 ## The window
 
 The layout follows the Rev4 board file: every key socket, encoder, LED and

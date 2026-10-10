@@ -24,6 +24,17 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 set(CHOMPI_PRELUDE "SHELL:-include ${CMAKE_SOURCE_DIR}/host/compat/chompi_sim_prelude.h")
+
+# ---- Windows (MinGW-w64, natively under MSYS2 or cross-compiled with cmake/mingw-w64-x86_64.cmake) ----
+if(WIN32)
+  add_compile_definitions(_USE_MATH_DEFINES) # M_PI and friends from <math.h>
+endif()
+if(MINGW)
+  # the C++ runtime goes into the executables; SDL2.dll and libwinpthread-1.dll travel next to them
+  add_link_options(-static-libgcc -static-libstdc++)
+  # the firmware keeps sizeable buffers on the stack; Windows' default main-thread stack is 1 MB
+  add_link_options(-Wl,--stack,16777216)
+endif()
 set(CHOMPI_FW_WARNINGS
   "-Wno-unused-variable;-Wno-unused-but-set-variable;-Wno-format;-Wno-sign-compare;-Wno-unused-function;-Wno-missing-field-initializers;-Wno-attributes;-Wno-unknown-attributes;-Wno-pedantic;-Wno-reorder;-Wno-unused-value;-Wno-parentheses;-Wno-misleading-indentation;-Wno-narrowing;-Wno-write-strings")
 
@@ -181,6 +192,9 @@ if(CHOMPI_SIM_BUILD_GUI)
         target_link_libraries(${target} PRIVATE ${SDL2_LIBRARIES})
       endif()
       target_include_directories(${target} PRIVATE "${CMAKE_SOURCE_DIR}/frontends/common")
+      if(WIN32)
+        target_link_libraries(${target} PRIVATE comdlg32) # the native file dialog
+      endif()
     endfunction()
     if(CHOMPI_SIM_STUB)
       add_executable(chompi-sim-gui ${GUI_SOURCES} frontends/sdl/sim_stub.cpp)

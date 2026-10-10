@@ -13,7 +13,17 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
+#ifdef _WIN32
+// <windows.h> clashes with FatFs's DWORD and WCHAR, which the shim headers carry; the one call needed is declared here
+extern "C" __declspec(dllimport) void* __stdcall VirtualAlloc(void* address, size_t size, unsigned long type, unsigned long protect);
+#ifndef MEM_COMMIT
+#define MEM_COMMIT 0x1000
+#define MEM_RESERVE 0x2000
+#define PAGE_READWRITE 0x04
+#endif
+#else
 #include <sys/mman.h>
+#endif
 
 namespace chompi_sim
 {
@@ -521,21 +531,26 @@ void Device::RenderStereo(float* interleaved, size_t frames, int pair)
  *  cannot change that for arm64. Either way the block is usable. */
 bool Device::MapSdram()
 {
-    const size_t len = size_t(64) << 20;
+    const size_t len  = size_t(64) << 20;
     void*        want = reinterpret_cast<void*>(uintptr_t(0xC0000000u));
-    int          flags = MAP_PRIVATE | MAP_ANONYMOUS;
-#ifdef MAP_FIXED_NOREPLACE
-    flags |= MAP_FIXED_NOREPLACE;
-#endif
-    void* got = MAP_FAILED;
+    void*        got  = nullptr;
     if(!getenv("CHOMPI_SIM_NO_FIXED_SDRAM")) // set it to exercise the macOS path on Linux
-        got = mmap(want, len, PROT_READ | PROT_WRITE, flags, -1, 0);
-    if(got != MAP_FAILED && got != want)
     {
-        munmap(got, len);
-        got = MAP_FAILED;
+#ifdef _WIN32
+        got = VirtualAlloc(want, len, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE); // null when the range is taken
+#else
+        int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+#ifdef MAP_FIXED_NOREPLACE
+        flags |= MAP_FIXED_NOREPLACE;
+#endif
+        void* m = mmap(want, len, PROT_READ | PROT_WRITE, flags, -1, 0);
+        if(m != MAP_FAILED && m != want)
+            munmap(m, len);
+        else if(m != MAP_FAILED)
+            got = m;
+#endif
     }
-    if(got == MAP_FAILED)
+    if(!got)
     {
         // anywhere will do: calloc gives lazily committed zero pages
         got = calloc(len, 1);

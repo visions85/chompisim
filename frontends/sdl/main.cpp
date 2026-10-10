@@ -1,6 +1,7 @@
 /** @file main.cpp
  *  @brief SDL2 desktop front-end for the CHOMPI simulator: command line,
  *  window, sound card, input mapping and the 60 fps event loop. */
+#define SDL_MAIN_HANDLED // a plain main(): no SDL2main, the console stays attached on Windows
 #include <SDL.h>
 #include <algorithm>
 #include <array>
@@ -16,8 +17,19 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <commdlg.h>
+#else
 #include <sys/wait.h>
 #include <unistd.h>
+#endif
 #include "chompi_sim/sim.h"
 #include "firmware_info.h"
 #include "firmware_select.h"
@@ -339,6 +351,20 @@ void CaptureCallback(void*, Uint8* stream, int len)
  *  the firmware keep running on their own threads. */
 std::string PickSoundFile(std::string& why)
 {
+#ifdef _WIN32
+    char          file[MAX_PATH] = "";
+    OPENFILENAMEA ofn{};
+    ofn.lStructSize = sizeof ofn;
+    ofn.lpstrFilter = "Sounds (*.wav)\0*.wav;*.WAV\0All files\0*.*\0";
+    ofn.lpstrFile   = file;
+    ofn.nMaxFile    = DWORD(sizeof file);
+    ofn.lpstrTitle  = "Sound to play into the inputs";
+    ofn.Flags       = OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR;
+    if(GetOpenFileNameA(&ofn))
+        return file;
+    why = "cancelled";
+    return "";
+#else
     const char* const cmds[] = {
 #ifdef __APPLE__
         "osascript -e 'tell application \"System Events\"' -e 'activate' "
@@ -373,6 +399,7 @@ std::string PickSoundFile(std::string& why)
     }
     why = "no file dialog available (zenity or kdialog); drop a WAV onto the window or start with --input";
     return "";
+#endif
 }
 
 bool SaveScreenshot(SDL_Renderer* r, const std::string& path)
@@ -523,7 +550,7 @@ class App
         std::string card   = shared ? opt_.card : CardForFirmware(opt_.cards, opt_.card, f.id);
         if(!shared && DetectFirmware(card) != f.id)
             std::fprintf(stderr, "no card folder for %s found; booting it with %s\n", f.name, card.c_str());
-        std::vector<std::string> args = {exe_dir_ + "/chompi-sim-gui-" + f.id, "--card", card, "--pair", std::to_string(pair_),
+        std::vector<std::string> args = {FirmwareExecutable(exe_dir_, "chompi-sim-gui", f.id), "--card", card, "--pair", std::to_string(pair_),
                                          "--scale", std::to_string(opt_.scale), "--gain", std::to_string(opt_.input_gain)};
         if(shared)
         {
@@ -553,13 +580,12 @@ class App
             args.push_back("--no-tour");
         std::fprintf(stderr, "switching to %s: %s --card %s\n", f.name, args[0].c_str(), card.c_str());
         Shutdown();
-        std::vector<char*> cargs;
-        for(std::string& a : args)
-            cargs.push_back(&a[0]);
-        cargs.push_back(nullptr);
-        execv(args[0].c_str(), cargs.data());
-        std::perror(args[0].c_str());
-        std::exit(1);
+        if(ExecProgram(args, false) < 0) // replaces this process, or on Windows starts the other and returns
+        {
+            std::perror(args[0].c_str());
+            std::exit(1);
+        }
+        std::exit(0);
     }
     ~App() { Shutdown(); }
 
@@ -1515,6 +1541,7 @@ class App
 
 int main(int argc, char** argv)
 {
+    SDL_SetMainReady();
     Options opt;
     int     rc = ParseArgs(argc, argv, opt);
     if(rc != 0)

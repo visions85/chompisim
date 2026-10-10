@@ -14,7 +14,6 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
-#include <unistd.h>
 #include <vector>
 
 #ifndef LAUNCHER_BASE
@@ -66,7 +65,7 @@ int main(int argc, char** argv)
             }
     if(fw.empty())
         fw = available.front();
-    const std::string exe = dir + "/" + LAUNCHER_BASE + "-" + fw;
+    const std::string exe = FirmwareExecutable(dir, LAUNCHER_BASE, fw);
     if(!std::filesystem::exists(exe))
     {
         std::fprintf(stderr, "firmware '%s' is not built (no %s). Built:", fw.c_str(), exe.c_str());
@@ -84,11 +83,11 @@ int main(int argc, char** argv)
         args.push_back(cards);
     }
     args.insert(args.end(), rest.begin(), rest.end());
-    std::vector<char*> cargs;
-    for(std::string& s : args)
-        cargs.push_back(&s[0]);
-    cargs.push_back(nullptr);
-    execv(exe.c_str(), cargs.data());
-    std::perror(exe.c_str());
-    return 1;
+    const int rc = ExecProgram(args, true); // replaces this process, or on Windows waits for the other one
+    if(rc < 0)
+    {
+        std::perror(exe.c_str());
+        return 1;
+    }
+    return rc;
 }

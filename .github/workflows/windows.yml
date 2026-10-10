@@ -1,0 +1,49 @@
+# Builds the simulator on Windows (MSYS2 UCRT64: GCC, CMake, SDL2), runs the
+# device self-test, a headless render and a windowless GUI run, and publishes
+# the folder to copy over as the "chompi-sim-windows" artifact of the run.
+name: windows
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: >-
+            git
+            python
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-SDL2
+      - name: Fetch the CHOMPI firmware sources and factory cards
+        run: scripts/fetch-firmware.sh
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+      - name: Self-test, a headless render, and the window without a display
+        run: |
+          cp -R third_party/CHOMPI/firmware/card-profiles cards
+          ./build/chompi-sim-selftest.exe cards/wave-1.0
+          ./build/chompi-sim-wave.exe --card cards/wave-1.0 --seconds 10 --script examples/phrase.txt --wav out.wav --quiet
+          ls -la out.wav
+          SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy ./build/chompi-sim-gui-tape.exe --card cards/tape-2.0 --no-tour --screenshot shot.bmp --screenshot-at 1 --exit-after 2
+          ls -la shot.bmp
+          python scripts/make-multi-card.py cards/multi --profiles third_party/CHOMPI/firmware/card-profiles
+          ./build/chompi-sim.exe --card cards/multi --firmware wave --seconds 9 --script examples/phrase.txt --wav multi.wav --quiet
+      - name: Package
+        run: scripts/package-windows.sh build dist/chompi-sim-windows /ucrt64/bin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chompi-sim-windows
+          path: dist/chompi-sim-windows
