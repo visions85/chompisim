@@ -132,6 +132,11 @@ if(NOT CHOMPI_SIM_STUB)
   target_link_libraries(chompi_core PUBLIC daisysp corejson Threads::Threads)
 
   # ---- one object library per firmware: a patched copy of its sources ----
+  # the staging script runs through bash: Windows cannot start a script by its first line
+  find_program(CHOMPI_BASH NAMES bash sh)
+  if(NOT CHOMPI_BASH)
+    message(FATAL_ERROR "bash (or sh) is needed to stage the firmware sources; on Windows build from an MSYS2 shell")
+  endif()
   foreach(_name ${CHOMPI_FW_NAMES})
     set(_src "${CHOMPI_FW_CODE_${_name}}/src")
     if(NOT EXISTS "${_src}/chompi_main.cpp")
@@ -144,7 +149,7 @@ if(NOT CHOMPI_SIM_STUB)
          "${CMAKE_SOURCE_DIR}/scripts/stage-firmware.sh")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_stage_inputs})
     execute_process(
-      COMMAND "${CMAKE_SOURCE_DIR}/scripts/stage-firmware.sh" "${_src}" "${_staged}" "${CMAKE_SOURCE_DIR}/firmware/patches/${_name}"
+      COMMAND "${CHOMPI_BASH}" "${CMAKE_SOURCE_DIR}/scripts/stage-firmware.sh" "${_src}" "${_staged}" "${CMAKE_SOURCE_DIR}/firmware/patches/${_name}"
       RESULT_VARIABLE _stage_rc OUTPUT_VARIABLE _stage_out ERROR_VARIABLE _stage_err)
     if(NOT _stage_rc EQUAL 0)
       message(FATAL_ERROR "Staging the ${_name} firmware failed:\n${_stage_out}\n${_stage_err}")
