@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
-"""Makes a card folder for the GRAIN firmware: a few synthetic sounds as
-48 kHz 16-bit WAV files (the format the firmware loads), named so they land
-in sounds 1..4. Any 48 kHz 16-bit mono or stereo WAV works; drop your own in.
-    scripts/make-grain-card.py DIR [--from-tape third_party/CHOMPI/firmware/card-profiles/tape-2.0]
---from-tape also copies the first ten factory TAPE samples (already 48 kHz 16-bit stereo)."""
-import math, os, random, struct, sys, wave, shutil, glob
+"""Makes a card folder for the GRAIN firmware.
 
+By default it fills the fourteen sounds with the factory TAPE samples (bank A
+of the cubbi instrument, 48 kHz 16-bit stereo) from the CHOMPI checkout, in
+order, and writes the marker file the simulator's launcher reads the firmware
+name from. Any 48 kHz 16-bit mono or stereo WAV works; drop your own in.
+
+    scripts/make-grain-card.py DIR [--tape CARD] [--instrument cubbi|jammi] [--bank a|b|c] [--synthetic]
+
+--tape       the TAPE card folder (default: third_party/CHOMPI/firmware/card-profiles/tape-2.0,
+             fetched by scripts/fetch-firmware.sh)
+--synthetic  four synthetic sounds (a pluck, a voice, rain, a bell) instead of the samples;
+             also what you get when no TAPE card is found"""
+import math, os, random, struct, sys, wave, shutil, glob, re
 RATE = 48000
 
 def write_wav(path, frames, channels=1):
@@ -74,26 +81,44 @@ def bell(seconds=3.0, hz=261.6256):
         out.append(0.45 * s * min(1.0, t / 0.002))
     return out
 
+def arg(name, default=None):
+    if name in sys.argv:
+        i = sys.argv.index(name)
+        if i + 1 < len(sys.argv):
+            return sys.argv[i + 1]
+    return default
+
 def main():
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 2 or sys.argv[1].startswith("--"):
         print(__doc__); sys.exit(2)
     out = sys.argv[1]
     os.makedirs(out, exist_ok=True)
-    write_wav(os.path.join(out, "01_pluck_c3.wav"), pluck())
-    write_wav(os.path.join(out, "02_voice.wav"), voice())
-    write_wav(os.path.join(out, "03_rain.wav"), texture(), channels=2)
-    write_wav(os.path.join(out, "04_bell_c4.wav"), bell())
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    tape = arg("--tape", os.path.join(root, "third_party", "CHOMPI", "firmware", "card-profiles", "tape-2.0"))
+    instrument = arg("--instrument", "cubbi")
+    bank = arg("--bank", "a")
+    synthetic = "--synthetic" in sys.argv
+    n = 0
+    if not synthetic:
+        files = glob.glob(os.path.join(tape, "%s_%s*.wav" % (instrument, bank)))
+        files = [f for f in files if "_double" not in f]
+        files.sort(key=lambda f: int(re.search(r"(\d+)\.wav$", f).group(1)))
+        if not files:
+            print("no TAPE samples at %s (run scripts/fetch-firmware.sh tape, or pass --tape CARD); "
+                  "making the synthetic sounds instead" % tape)
+            synthetic = True
+        for f in files[:14]:
+            n += 1
+            shutil.copy(f, os.path.join(out, "%02d_%s" % (n, os.path.basename(f))))
+    if synthetic:
+        write_wav(os.path.join(out, "01_pluck_c3.wav"), pluck())
+        write_wav(os.path.join(out, "02_voice.wav"), voice())
+        write_wav(os.path.join(out, "03_rain.wav"), texture(), channels=2)
+        write_wav(os.path.join(out, "04_bell_c4.wav"), bell())
+        n = 4
     with open(os.path.join(out, "CHOMPI_GRAIN.txt"), "w") as f:
         f.write("A card for the GRAIN firmware: the simulator's launcher reads the firmware name off this file.\n")
-    n = 4
-    if "--from-tape" in sys.argv:
-        src = sys.argv[sys.argv.index("--from-tape") + 1]
-        for i, f in enumerate(sorted(glob.glob(os.path.join(src, "cubbi_a*.wav")))[:10]):
-            if "double" in f:
-                continue
-            shutil.copy(f, os.path.join(out, "%02d_%s" % (n + 1, os.path.basename(f))))
-            n += 1
-    print("wrote %d sounds to %s" % (n, out))
+    print("wrote %d sounds to %s%s" % (n, out, "" if synthetic else " (TAPE %s bank %s)" % (instrument, bank)))
 
 if __name__ == "__main__":
     main()

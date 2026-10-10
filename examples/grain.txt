@@ -1,6 +1,6 @@
 # GRAIN: play the first sound, change the cloud, then sample the input and play that.
 #   chompi-sim-grain --card <card made by scripts/make-grain-card.py> --seconds 20 --script examples/grain.txt --wav out.wav
-8.5  note 12 1.5          # middle key: sound 1 at its own pitch (a C3 pluck)
+8.5  note 12 1.5          # middle key: sound 1 at its own speed (the first factory TAPE sample)
 10.5 note 19 1.5          # a fifth up
 12.0 enc 0 60             # A: position, into the body of the sound
 12.0 enc 1 -20            # B: smaller grains

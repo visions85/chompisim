@@ -183,7 +183,8 @@ namespace grain
 
         void setFileManager(FileStreamingManager* fm) { file_manager = fm; }
 
-        /** The first kMaxFromCard .wav files in name order, with a readable header. */
+        /** The first kMaxFromCard .wav files in name order (TAPE's _double copies
+         *  left out), with a readable header. */
         void scanCard()
         {
             DIR     dir;
@@ -198,8 +199,8 @@ namespace grain
                     continue;
                 const char* ext = fno.fname + n - 4;
                 if((ext[0] == '.') && (ext[1] == 'w' || ext[1] == 'W') && (ext[2] == 'a' || ext[2] == 'A')
-                   && (ext[3] == 'v' || ext[3] == 'V'))
-                    found.push_back(fno.fname);
+                   && (ext[3] == 'v' || ext[3] == 'V') && !strstr(fno.fname, "_double"))
+                    found.push_back(fno.fname); // TAPE's _double files are the same sounds an octave up
             }
             f_closedir(&dir);
             std::sort(found.begin(), found.end());

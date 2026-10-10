@@ -285,10 +285,12 @@ others (`chompi-sim-gui-grain`, `chompi-sim-grain`).
 
 Sounds live in SDRAM as 48 kHz 16-bit stereo, up to ten seconds each: the
 first fourteen `.wav` files on the card in name order (48 kHz 16-bit PCM, mono
-or stereo; anything else is skipped) plus one recorded from the inputs.
-`scripts/make-grain-card.py DIR` makes a card with four synthetic sounds and
-the marker file the launcher reads the firmware name from; `--from-tape
-third_party/CHOMPI/firmware/card-profiles/tape-2.0` adds factory TAPE samples.
+or stereo; anything else is skipped, as are TAPE's `_double` copies) plus one
+recorded from the inputs. `scripts/make-grain-card.py cards/grain` makes a
+card from the factory TAPE samples in the checkout (bank A of the cubbi
+instrument; `--instrument jammi`, `--bank b` pick others) and writes the
+marker file the launcher reads the firmware name from; `--synthetic` makes
+four synthetic sounds instead. A TAPE factory card works directly too.
 
 Each held key plays a cloud of up to twelve grains from the selected sound,
 at the key's pitch relative to the middle key, which plays the sound at its
