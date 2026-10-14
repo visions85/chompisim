@@ -35,7 +35,7 @@ class PresetManager
     static constexpr int kMaxModes = 2; // jammi, cubbi
     static constexpr int kMaxBanks = 3; // a, b, c
     static constexpr int kMaxSlots = 14; // 1, 2, 3, etc.
-    static constexpr int kMaxControls = 17; // GRAIN: the layout is in MenuPage::DumpValuePresets
+    static constexpr int kMaxControls = 18; // GRAIN: the layout is in MenuPage::DumpValuePresets
     // 0 pitch, 1 cycle, 2 table, 3 attack, 4 pitch-LFO amt, 5 release,
     // 6 filter-LFO amt, 7 cutoff, 8 pitch-LFO rate, 9 delay wet, 10 resonance,
     // 11 filter-LFO rate, 12 delay time, 13 LFO on/off bitfield (pitch=1, filter=2)
@@ -136,10 +136,18 @@ class PresetManager
             /** Get module presets */
                     for(int slot = 0; slot < kMaxSlots; slot++)
                     {
-                        // valid?
-                        sprintf(query, "[%d][%d]", slot, numcontrols);
+                        // valid? A file saved before the drift control (17 values) keeps its flag one place earlier
+                        uint8_t slotcontrols = numcontrols;
+                        sprintf(query, "[%d][%d]", slot, slotcontrols);
                         json_res = JSON_Search(
                             buffer, len, query, strlen(query), &value, &value_len);
+                        if(json_res != JSONSuccess && numcontrols == kMaxControls)
+                        {
+                            slotcontrols = kMaxControls - 1;
+                            sprintf(query, "[%d][%d]", slot, slotcontrols);
+                            json_res = JSON_Search(
+                                buffer, len, query, strlen(query), &value, &value_len);
+                        }
                         
                         char save = value[4];
                         value[4] = '\0';
@@ -148,7 +156,7 @@ class PresetManager
 
                         if(json_res == JSONSuccess && valid)
                         {
-                            for(int ctrl = 0; ctrl < numcontrols; ctrl++)
+                            for(int ctrl = 0; ctrl < slotcontrols; ctrl++)
                             {
                                 /** and now check for the value */
                                 sprintf(query, "[%d][%d]", slot, ctrl);

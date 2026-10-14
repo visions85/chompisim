@@ -19,6 +19,7 @@ struct FirmwareInfo
     const char* chompi;          /**< the CHOMPI key with the mode switch up */
     const char* play;
     const char* loop;
+    const char* menu_loop;       /**< what LOOP does in the menu, nullptr if nothing */
     const char* menu_black[10];  /**< the black keys, left to right, in the menu (mode switch down + CHOMPI) */
     const char* menu_white;      /**< the white keys in the menu, numbered 1..14 */
     const char* menu_white15;    /**< the fifteenth white key in the menu */

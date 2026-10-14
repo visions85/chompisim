@@ -587,7 +587,9 @@ void DrawFuncKey(Canvas& cv, const FuncKeyDef& f, const UiState& st)
     cv.Text(r.x + r.w / 2, r.y + r.h / 2 - 5 + dy, 1, kFuncText, f.label, 0);
     const FirmwareInfo& fw  = FirmwareByName(st.firmware);
     const bool          menu = Sim::Get().ToggleDown();
-    const char* cue = f.button == KEY_CHOMPI ? (menu ? "MENU (hold)" : fw.chompi) : f.button == KEY_PLAY ? fw.play : fw.loop;
+    const char* cue = f.button == KEY_CHOMPI ? (menu ? "MENU (hold)" : fw.chompi)
+                      : f.button == KEY_PLAY ? fw.play
+                                             : (menu && fw.menu_loop ? fw.menu_loop : fw.loop);
     if(cue)
         cv.Text(r.x + r.w / 2, r.y + r.h + 4, 1, kCue, cue, 0);
 }

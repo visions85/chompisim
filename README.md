@@ -367,9 +367,9 @@ own speed. The knobs:
 
 | Knob | Page 1 | Click | Click again |
 |---|---|---|---|
-| PITCH | pitch, fine | scan: frozen at the left, natural speed in the middle, four times at the right | |
+| PITCH | pitch, fine | scan: frozen at the left, natural speed in the middle, four times at the right | drift: how far each voice wanders on its own, grain position, pitch and pan on slow random walks |
 | A | position in the sound | spray, random spread around the position | |
-| B | grain size, 5 to 500 ms | density, half a grain to eight grains at a time | |
+| B | grain size, 5 ms to 2 s | density, half a grain to eight grains at a time | |
 | C | texture: fat windows to pointed ones, then a growing share of reversed grains | space, delay to the left, reverb to the right | filter cutoff |
 | transport | tempo, tap to set | | |
 | volume | volume | pan | |
@@ -390,6 +390,16 @@ is built on that: it lists the card's `.wav` files the way the firmware loads
 them, sends a choice as CC 32 to the firmware's MIDI input and shows what the
 firmware reports back. Both go on the MIDI out channel of the options file,
 so keep the in and out channels alike if you change them.
+
+GRAIN is also meant for drones and slow ambient textures. In the menu
+(mode switch down, CHOMPI held) the LOOP key switches LATCH: a key starts a
+voice, letting go does nothing, and its next press stops it, so a chord
+sustains without hands. Attack and release reach 30 seconds, the LFOs go
+down to a two-minute sweep, grains up to two seconds, the sequencer down to
+20 beats a minute, and the DRIFT page of the PITCH knob sets every voice
+wandering on its own. `examples/grain-drone.txt` latches a chord with a
+slow fade-in and drift and lets it evolve. While latch is on the CHOMPI
+key's LED shows a dim teal, and the LOOP key's LED is teal in the menu.
 
 `examples/grain.txt` plays the first sound, changes the cloud, samples
 `examples/tone.wav` and plays it back; `examples/grain-sounds.txt` picks

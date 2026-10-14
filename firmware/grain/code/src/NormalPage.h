@@ -17,7 +17,7 @@ namespace chompi
         static const uint8_t cc_map[3][6] = {
             {20, 21, 22, 23, 24, 25},
             {26, 27, 28, 29, 0, 30},
-            {0, 0, 0, 31, 0, 0}}; // C has a third page (filter cutoff): CC 31
+            {33, 0, 0, 31, 0, 0}}; // third pages: PITCH's drift is CC 33, C's filter cutoff CC 31 (32 selects the sound)
 
         static const uint8_t key_map[40] = {
             0x01, /**< ENC_1_SW  page */
@@ -130,7 +130,7 @@ namespace chompi
 
     // Number of pages per knob. Cycled through by clicking. GRAIN: pitch/scan,
     // position/spray, size/density, texture/space/filter, tempo, gain/pan
-    static const uint8_t knob_num_pages[6] = {2, 2, 2, 3, 1, 2};
+    static const uint8_t knob_num_pages[6] = {3, 2, 2, 3, 1, 2}; // PITCH: pitch, scan, drift
 
     /** The lower row of keys, left to right, as button ids: the playhead runs along them. */
     static const uint8_t lower_row_keys[15] = {15, 8, 9, 10, 11, 16, 17, 18, 19, 20, 24, 25, 26, 27, 28};
@@ -299,6 +299,13 @@ namespace chompi
                         b = color_triple_xfade(blue[2], pink[2], red[2], value);
 
                         engine_->setScan(value);
+                    }
+                    else // drift: still at the left, wandering at the right (teal to white)
+                    {
+                        r = value;
+                        g = .5f + .5f * value;
+                        b = .5f + .5f * value;
+                        engine_->setDrift(value);
                     }
 
                     SetPthLedFloat(1, r, g, b);
@@ -512,7 +519,8 @@ namespace chompi
             }
 
 
-            // chompi key: red while it records, white otherwise, purple as the menu key
+            // chompi key: red while it records, white otherwise, purple as the menu key,
+            // and a dim teal at rest while keys latch (menu: LOOP with CHOMPI held)
 
             if (engine_->isRecording()) {
                 r = 1.f;
@@ -527,6 +535,10 @@ namespace chompi
                     g = 0.f;
                     b = 1.f;
                 }
+            }
+            else if (engine_->getLatch()) {
+                r = 0.f;
+                g = b = .25f;
             }
             else {
                 r = g = b = 0.f;
@@ -668,12 +680,21 @@ namespace chompi
 
             // keys
             default:
+                // latch (menu, LOOP key): the press of a sounding key is its release
+                if (rising && engine_->getLatch() && latched_[buttonID])
+                {
+                    rising = false;
+                    latched_[buttonID] = false;
+                }
+                else if (!rising && engine_->getLatch() && latched_[buttonID])
+                    break; // letting go of a latched key does nothing
                 if (rising)
                 {
                     // real keypress
                     if(!isRetriggering)
                     {
                         key_note_on_[buttonID] = true;
+                        latched_[buttonID] = engine_->getLatch();
                         engine_->request_fifo.PushBack(KeyRequest(KeyRequest::Type::START, 
                             key_map[buttonID] - 60, buttonID, 127.f));
 
@@ -754,6 +775,9 @@ namespace chompi
             else if (encoderID == 0 && page == 1) {
                 engine_->setScan(enc_values[1][0]);
             }
+            else if (encoderID == 0 && page == 2) {
+                engine_->setDrift(enc_values[2][0]);
+            }
             else if (encoderID == 1 && page == 0) {
                 engine_->setPosition(enc_values[0][1]); // moves the playheads at once
             }
@@ -764,8 +788,8 @@ namespace chompi
                 if (t > 480) {
                     t = 480;
                 }
-                else if (t < 160) {
-                    t = 160;
+                else if (t < 80) { // 20 beats a minute: the slowest the MIDI clock timer can count
+                    t = 80;
                 }
                 clock_manager_->changeTempo(t);
             }
@@ -807,6 +831,7 @@ namespace chompi
             presets_->SetValue(enc_values[1][2], slot, 6); // density
             presets_->SetValue(enc_values[1][3], slot, 7); // space
             presets_->SetValue(enc_values[2][3], slot, 8); // cutoff
+            presets_->SetValue(enc_values[2][0], slot, 17); // drift
         }
 
         inline bool getSwitchState() { return switch_state; }
@@ -837,6 +862,7 @@ namespace chompi
         bool switch_state = false;
         bool chompi_key_pressed = false;
         bool key_note_on_[40] = {};
+        bool latched_[40] = {};  /**< keys sounding under latch, waiting for their next press */
         uint8_t midi_note_sent_[40] = {};
         uint32_t full_blink_startt = 0;
         uint32_t erase_rainbow_startt = 0;

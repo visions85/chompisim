@@ -122,6 +122,12 @@ namespace chompi
                     SetPthLedFloat(5, dled[0], dled[1], dled[2]);
                     SetPthLedFloat(6, dled[3], dled[4], dled[5]);
                 }
+
+                // the LOOP key's LED: teal while keys latch (LOOP with CHOMPI held toggles it)
+                if (engine_->getLatch())
+                    SetPthLedFloat(8, 0.f, .6f, .6f);
+                else
+                    SetPthLedFloat(8, 0.f, 0.f, 0.f);
             }
 
             else if (preset_mode == PresetMode::COPY_SRC
@@ -488,6 +494,7 @@ namespace chompi
             presets_->SetValue(static_cast<float>(engine_->getSound()), slot, 14); // sound
             presets_->SetValue(attack_, slot, 15);
             presets_->SetValue(release_, slot, 16);
+            presets_->SetValue(enc_values[2][0], slot, 17); // drift
         }
 
         void SetVoiceSlot(size_t slot)
@@ -541,6 +548,7 @@ namespace chompi
                     engine_->selectSound(snd);
                 attack_ = presets_->GetValue(mode, bank, slot, 15);
                 release_ = presets_->GetValue(mode, bank, slot, 16);
+                enc_values[2][0] = presets_->GetValue(mode, bank, slot, 17); // drift
             }
             sound_idx = engine_->getSound() / float(grain::kNumSounds - 1);
 
@@ -553,6 +561,7 @@ namespace chompi
             engine_->setDensity(enc_values[1][2]);
             engine_->setDelayFeedback(enc_values[1][3]);
             engine_->setMasterCutoff(enc_values[2][3]);
+            engine_->setDrift(enc_values[2][0]);
             engine_->setAttack(attack_);
             engine_->setRelease(release_);
             engine_->setPitchLfoRate(pitch_lfo_rate);
@@ -739,6 +748,15 @@ namespace chompi
                 }
                 return false;
                 break;
+            }
+
+            case static_cast<uint16_t>(Hardware::SwId::KEY_28): // loop, with CHOMPI held: latch on / off
+            {
+                if (!chompi_key_pressed)
+                    return false; // the sequencer's loop key as usual
+                if (rising)
+                    engine_->setLatch(!engine_->getLatch());
+                return true;
             }
 
             case static_cast<uint16_t>(Hardware::SwId::KEY_16):

@@ -1,0 +1,20 @@
+# GRAIN as a drone box: latch on, a slow fade-in and release, drift up, then a chord
+# that keeps sounding after the keys are let go and evolves on its own.
+#   chompi-sim-grain --card <card made by scripts/make-grain-card.py> --seconds 75 --script examples/grain-drone.txt --wav out.wav
+8.5  toggle down
+8.6  button CHOMPI down     # the menu, held: ...
+8.8  press LOOP 0.1         # LOOP = latch on (the LOOP LED turns teal)
+9.1  enc 0 12               # A: attack up, coarse steps (about 8 s)
+9.4  enc 1 12               # B: release up (about 23 s)
+9.7  button CHOMPI up
+9.9  toggle up
+10.2 encpress 3 0.1         # PITCH knob: page 2, scan
+10.5 encpress 3 0.1         # page 3: drift
+10.8 enc 3 60               # drift up: every voice wanders on its own
+11.0 enc 1 -10              # B page 1: longer grains
+11.5 note 12 0.2            # a chord, each key tapped: latched, it fades in and stays
+12.0 note 19 0.2
+12.5 note 24 0.2
+45.0 note 12 0.2            # tapped again: each note lets go over the release time
+45.5 note 19 0.2
+46.0 note 24 0.2

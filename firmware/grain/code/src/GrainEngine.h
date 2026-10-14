@@ -337,8 +337,8 @@ namespace grain
         void setSound(const Sound* s) { sound_ = s; }
         void setRate(float r) { rate_ = r; }
 
-        /** Grain length: 5 ms to 500 ms. */
-        void setSize(float v) { size_s_ = .005f * powf(100.f, fclamp(v, 0.f, 1.f)); }
+        /** Grain length: 5 ms to 2 s (long grains blend into a drone). */
+        void setSize(float v) { size_s_ = .005f * powf(400.f, fclamp(v, 0.f, 1.f)); }
         /** Overlap: half a grain to eight grains at a time. */
         void setDensity(float v)
         {
@@ -368,6 +368,9 @@ namespace grain
             v         = fclamp(v, 0.f, 1.f);
             scan_rate_ = v < .04f ? 0.f : powf(2.f, (v - .5f) * 4.f);
         }
+        /** A slow wander of where grains are taken from, in turns of the sound (-1..1), added to the playhead. */
+        void setDriftOffset(float v) { drift_offset_ = v; }
+
         /** Moves the playhead to a point of the sound (0..1). */
         void setPosition(float v)
         {
@@ -480,8 +483,8 @@ namespace grain
                 len = 48.f;
             if(g)
             {
-                float start = playhead_ + (Rand() * 2.f - 1.f) * spray_ * kSprayRangeS * sr_;
                 const float ff = float(frames);
+                float start = playhead_ + drift_offset_ * ff + (Rand() * 2.f - 1.f) * spray_ * kSprayRangeS * sr_;
                 while(start < 0.f)
                     start += ff;
                 while(start >= ff)
@@ -510,7 +513,7 @@ namespace grain
         uint32_t       rng_   = 1;
         float          rate_  = 1.f;
         float          size_s_ = .1f, overlap_ = 2.f, grain_gain_ = .6f, spray_ = 0.f, scan_rate_ = 1.f;
-        float          position_ = 0.f, playhead_ = 0.f, reverse_prob_ = 0.f, win_mix_ = 0.f;
+        float          position_ = 0.f, playhead_ = 0.f, reverse_prob_ = 0.f, win_mix_ = 0.f, drift_offset_ = 0.f;
         int            win_a_ = 0;
         uint32_t       spawn_counter_ = 0;
     };
@@ -539,6 +542,20 @@ class grainVoice {
 
         activeFromUser = false;
         activeFromSequencer = false;
+
+        drift_rng_ = (idx + 7) * 2246822519u + 3u;
+        for (int i = 0; i < 3; i++)
+            drift_[i] = drift_target_[i] = 0.f;
+        drift_countdown_ = 0;
+        sr_ = sample_rate;
+    }
+
+    /** How far the voice wanders on its own (0..1): grain position, pitch and pan,
+     *  each on a slow random walk of its own, different in every voice. */
+    void setDrift(float amount) {
+        drift_amount_ = fclamp(amount, 0.f, 1.f);
+        if (drift_amount_ <= 0.f)
+            pan_l_ = pan_r_ = 1.f; // back to the middle; the walkers stop where they are
     }
 
     void Process(float *sigl, float *sigr) {
@@ -549,7 +566,28 @@ class grainVoice {
             return;
         }
 
-        cloud.setRate(frequency * *pitch_lfo_mult_ / grain::kRootHz);
+        // the drift walkers step every 50 ms: new targets every few seconds, approached slowly
+        if (drift_amount_ > 0.f) {
+            if (++drift_tick_ >= uint32_t(sr_ * .05f)) {
+                drift_tick_ = 0;
+                if (drift_countdown_ == 0) {
+                    for (int i = 0; i < 3; i++)
+                        drift_target_[i] = DriftRand() * 2.f - 1.f;
+                    drift_countdown_ = 60 + uint32_t(DriftRand() * 100.f); // 3 to 8 s
+                }
+                drift_countdown_--;
+                for (int i = 0; i < 3; i++)
+                    drift_[i] += (drift_target_[i] - drift_[i]) * .025f; // a 2 s glide
+                // the voice wanders across the stereo field: constant-power pan, unity in the middle
+                const float pan = .5f + drift_amount_ * drift_[2] * .5f;
+                pan_l_ = cosf(pan * 1.5707963f) * 1.4142135f;
+                pan_r_ = sinf(pan * 1.5707963f) * 1.4142135f;
+            }
+        }
+        const float d = drift_amount_;
+        cloud.setDriftOffset(d * drift_[0] * .5f);                      // up to half the sound away
+        const float pitch_drift = 1.f + d * drift_[1] * .03f;            // up to about 50 cents
+        cloud.setRate(frequency * *pitch_lfo_mult_ * pitch_drift / grain::kRootHz);
 
         float gl, gr;
         cloud.Process(&gl, &gr);
@@ -560,8 +598,8 @@ class grainVoice {
 
         float templ, tempr;
         filter_.Process(gl * a, gr * a, &templ, &tempr);
-        *sigl += templ;
-        *sigr += tempr;
+        *sigl += templ * pan_l_;
+        *sigr += tempr * pan_r_;
     }
 
     void setFrequency(float freq) {
@@ -584,8 +622,19 @@ class grainVoice {
     float velocity = 1.f;
 
     private:
+    float DriftRand() {
+        drift_rng_ ^= drift_rng_ << 13;
+        drift_rng_ ^= drift_rng_ >> 17;
+        drift_rng_ ^= drift_rng_ << 5;
+        return float(drift_rng_ >> 8) * (1.f / 16777216.f);
+    }
+
     float *filter_lfo_val_;
     float *pitch_lfo_mult_;
+    float sr_ = 48000.f;
+    float drift_amount_ = 0.f, pan_l_ = 1.f, pan_r_ = 1.f;
+    float drift_[3], drift_target_[3];
+    uint32_t drift_rng_ = 1, drift_tick_ = 0, drift_countdown_ = 0;
 
 };
 
@@ -880,30 +929,39 @@ class myEngine {
         return octaveOffset;
     }
 
+    /** Attack: instant at the bottom, 30 s at the top (ambient fade-ins). */
     void setAttack(float amount) {
-        if (amount < .008) {
-            amount = .001;
-        }
+        const float t = amount < .008f ? .001f : powf(amount, 2.5f) * 30.f;
         for (int i = 0; i < NUM_VOICES; ++i) {
-            myVoices[i].amp_env.SetAttackTime(amount * 5.f, 1.f);
+            myVoices[i].amp_env.SetAttackTime(t, 1.f);
         }
     }
 
+    /** Release: 5 ms at the bottom, 30 s at the top. */
     void setRelease(float amount) {
-        if (amount < .008) {
-            amount = .005;
-        }
+        const float t = amount < .008f ? .005f : powf(amount, 2.5f) * 30.f;
         for (int i = 0; i < NUM_VOICES; ++i) {
-            myVoices[i].amp_env.SetReleaseTime(amount);
+            myVoices[i].amp_env.SetReleaseTime(t);
         }
     }
+
+    /** How far every voice wanders on its own: position, pitch and pan. */
+    void setDrift(float amount) {
+        for (int i = 0; i < NUM_VOICES; ++i)
+            myVoices[i].setDrift(amount);
+    }
+
+    /** Latch: a key starts a voice and the next press of it stops it; releases do nothing. */
+    void setLatch(bool on) { latch_ = on; }
+    bool getLatch() const { return latch_; }
 
     void setLfoDepth(float amount) {
         filterLfo.SetAmp(amount);
     }
 
+    /** LFO rate: a two-minute sweep at the bottom, audio rate (a low C) at the top. */
     void setLfoRate(float amount) {
-        filterLfo.SetFreq(.14f * powf(65.41f / .14f, amount));
+        filterLfo.SetFreq(.008f * powf(65.41f / .008f, amount));
     }
 
     void setGain(float amount) {
@@ -990,7 +1048,7 @@ class myEngine {
     }
 
     void setPitchLfoRate(float amount) {
-        pitchLfo.SetFreq(.14f * powf(65.41f / .14f, amount));
+        pitchLfo.SetFreq(.008f * powf(65.41f / .008f, amount));
     }
 
     void setMasterCutoff(float amount) {
@@ -1179,6 +1237,7 @@ class myEngine {
     float pitch_lfo_mult = 1.f;
     bool pitch_lfo_on = false;
     bool filter_lfo_on = false;
+    bool latch_ = false;
     InterpolatedDelayLine del_;
     daisysp::Reverb *reverb_;
     EnvFollower output_env_follower;

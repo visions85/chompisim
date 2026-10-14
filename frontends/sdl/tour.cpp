@@ -339,7 +339,9 @@ const TourStep kGrain[] = {
      nullptr},
     {kPitch, "PITCH knob",
      "Page 1: fine pitch. Page 2: SCAN, how the playhead moves through the sound: frozen at the left, "
-     "natural speed in the middle, four times as fast at the right.",
+     "natural speed in the middle, four times as fast at the right. Page 3: DRIFT, how far each voice "
+     "wanders on its own: grain position, pitch and pan on slow random walks, different in every voice, "
+     "so a held chord keeps changing.",
      kKnobKeys},
     {kKnobA, "POSITION knob",
      "Page 1: where in the sound the grains are taken from. Page 2: SPRAY, a random spread around that "
@@ -356,13 +358,15 @@ const TourStep kGrain[] = {
      "The sequencer's tempo; press it two or more times in a row to tap one in.", kTransportKeys},
     {kVolume, "VOLUME knob", "Page 1: volume. Page 2: pan. SHIFT + turn: the compressor.", kVolumeKeys},
     {kPlay, "PLAY key", "Starts and stops the sequencer.", "Space is the PLAY key."},
-    {kLoop, "LOOP key: record a sequence",
-     "Arms recording: every note you press is added as a step, up to 32. Hold LOOP to delete the last step; "
-     "hold PLAY + LOOP to clear the sequence.",
-     "Return is the LOOP key."},
+    {kLoop, "LOOP key: sequence, or latch",
+     "Switch UP: arms recording: every note you press is added as a step, up to 32. Hold LOOP to delete "
+     "the last step; hold PLAY + LOOP to clear the sequence. Switch DOWN with CHOMPI held: LATCH on or "
+     "off. Latched keys keep sounding after you let go and stop at their next press: a drone box.",
+     "Return is the LOOP key. Tab, hold Left Shift, Return switches latch."},
     {kWhiteSlots, "Presets",
      "Hold SHIFT (switch DOWN) and the white keys recall preset slots; slot 15 is the default. A and B set "
-     "attack and release in the menu, and the last three black keys ERASE, COPY and SAVE slots.",
+     "attack and release in the menu, up to 30 seconds each, and the last three black keys ERASE, COPY "
+     "and SAVE slots.",
      "Tab, hold Left Shift, then a white key."},
     {kBlack12, "Menu: octaves, gate, LFOs",
      "The first two black keys move the keyboard an octave down or up, the next three set the gate length "

@@ -27,7 +27,7 @@ namespace chompi
     static const float enc_defaults[3][6] = {
         {.5f, 0.f, .5f, .3f, .5f, .84f},  // page 1  pitch, position, size, texture, tempo, gain
         {.5f, .15f, .5f, .5f, 0.f, .5f},  // page 2  scan, spray, density, space (.5 = dry), -, pan
-        {0.f, 0.f, 0.f, .5f, 0.f, 0.f},   // page 3  C only: filter cutoff
+        {0.f, 0.f, 0.f, .5f, 0.f, 0.f},   // page 3  drift, -, -, filter cutoff
     };
 
     // Remaps MIDI note numbers to the UI key system
@@ -274,11 +274,11 @@ namespace chompi
         {
             // the preset layout of MenuPage::DumpValuePresets: pitch, position, size, texture,
             // scan, spray, density, space, cutoff, pitch lfo rate, resonance, filter lfo rate,
-            // delay time, lfo switches, sound, attack, release
+            // delay time, lfo switches, sound, attack, release, drift
             float defaults[PresetManager::kMaxControls] = {
                 enc_defaults[0][0], enc_defaults[0][1], enc_defaults[0][2], enc_defaults[0][3],
                 enc_defaults[1][0], enc_defaults[1][1], enc_defaults[1][2], enc_defaults[1][3],
-                enc_defaults[2][3], .58f, .63f, .58f, .4f, 0.f, 0.f, 0.f, .3f};
+                enc_defaults[2][3], .58f, .63f, .58f, .4f, 0.f, 0.f, 0.f, .3f, enc_defaults[2][0]};
 
             presets_manager->Init(defaults);
 
