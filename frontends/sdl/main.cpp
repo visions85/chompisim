@@ -416,13 +416,13 @@ bool SaveScreenshot(SDL_Renderer* r, const std::string& path)
 }
 
 // ---------------------------------------------------------------------------
-// The sounds on the card, listed the way the GRAIN firmware loads them, so a
+// The sounds on the card, listed the way the DRONE firmware loads them, so a
 // row of the sound menu is the sound of that number in the firmware
 // ---------------------------------------------------------------------------
 
 /** True for a WAV the firmware takes: 48 kHz 16-bit PCM, mono or stereo, the
  *  data chunk inside the first 4 KB (GrainEngine.h, ReadWavInfo). */
-bool GrainWavOk(const std::filesystem::path& path)
+bool SoundWavOk(const std::filesystem::path& path)
 {
     std::ifstream f(path, std::ios::binary);
     unsigned char head[4096];
@@ -480,7 +480,7 @@ std::vector<gui::SoundEntry> ScanCardSounds(const std::string& dir, int limit)
     {
         if(int(out.size()) >= limit)
             break;
-        if(GrainWavOk(std::filesystem::path(dir) / n))
+        if(SoundWavOk(std::filesystem::path(dir) / n))
             out.push_back({int(out.size()), n.substr(0, n.size() - 4)});
     }
     return out;

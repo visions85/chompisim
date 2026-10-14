@@ -128,7 +128,7 @@ namespace chompi
     static const float purple[3] = {.58f, .05f, 1.f};
     static const float pink[3] = {1.f, .36f, .62f};
 
-    // Number of pages per knob. Cycled through by clicking. GRAIN: pitch/scan,
+    // Number of pages per knob. Cycled through by clicking. DRONE: pitch/scan,
     // position/spray, size/density, texture/space/filter, tempo, gain/pan
     static const uint8_t knob_num_pages[6] = {3, 2, 2, 3, 1, 2}; // PITCH: pitch, scan, drift
 

@@ -35,7 +35,7 @@ class PresetManager
     static constexpr int kMaxModes = 2; // jammi, cubbi
     static constexpr int kMaxBanks = 3; // a, b, c
     static constexpr int kMaxSlots = 14; // 1, 2, 3, etc.
-    static constexpr int kMaxControls = 18; // GRAIN: the layout is in MenuPage::DumpValuePresets
+    static constexpr int kMaxControls = 18; // DRONE: the layout is in MenuPage::DumpValuePresets
     // 0 pitch, 1 cycle, 2 table, 3 attack, 4 pitch-LFO amt, 5 release,
     // 6 filter-LFO amt, 7 cutoff, 8 pitch-LFO rate, 9 delay wet, 10 resonance,
     // 11 filter-LFO rate, 12 delay time, 13 LFO on/off bitfield (pitch=1, filter=2)

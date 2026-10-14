@@ -312,13 +312,13 @@ const TourStep kTempo[] = {
 };
 
 // ---------------------------------------------------------------------------
-// GRAIN 0.1 (this repository's granular sampler, see the README)
+// DRONE 0.1 (this repository's granular sampler for drones, see the README)
 // ---------------------------------------------------------------------------
-const TourStep kGrain[] = {
-    {kNone, "GRAIN: granular sampler",
-     "GRAIN is grown from WAVE: each held key plays a cloud of up to twelve grains from the selected sound at "
-     "the key's pitch, and the sequencer, presets, filter, envelope, LFOs and effects are WAVE's. It lives in "
-     "this repository and has not run on a real instrument yet.",
+const TourStep kDrone[] = {
+    {kNone, "DRONE: granular sampler",
+     "DRONE is grown from WAVE: each held key plays a cloud of up to twelve grains from the selected sound at "
+     "the key's pitch, and the sequencer, presets, filter, envelope, LFOs and effects are WAVE's, with latch, "
+     "slow envelopes and drift for drones. It lives in this repository and has not run on a real instrument yet.",
      kNavigate},
     {kToggle, "MODE switch",
      "UP: play mode, and the CHOMPI key records. DOWN: the shift menu, with the CHOMPI key held as SHIFT: "
@@ -420,8 +420,8 @@ Tour TourFor(const std::string& firmware)
         return Make(kWave);
     if(firmware == "tempo")
         return Make(kTempo);
-    if(firmware == "grain")
-        return Make(kGrain);
+    if(firmware == "drone")
+        return Make(kDrone);
     return Make(kPlain);
 }
 

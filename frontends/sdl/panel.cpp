@@ -733,7 +733,7 @@ SDL_FRect InputButtonRect(int i)
     return SDL_FRect{kInputButtonX[i], kTabY, kInputButtonW[i], kTabH};
 }
 
-/** The SOUND menu of a firmware with a sound list (GRAIN): a button in the
+/** The SOUND menu of a firmware with a sound list (DRONE): a button in the
  *  bar after the firmware's name, and a list dropped over the instrument. */
 constexpr float kSoundLabelX = 372.f, kSoundX = 410.f, kSoundW = 142.f;
 constexpr float kSoundRowH = 14.f, kSoundListW = 236.f, kSoundListPad = 3.f;

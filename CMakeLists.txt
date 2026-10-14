@@ -54,7 +54,7 @@ else()
       list(APPEND _fw_entries ${_fw})
     endif()
   endforeach()
-  # firmwares kept in this repository, such as grain
+  # firmwares kept in this repository, such as drone
   file(GLOB _own_fw LIST_DIRECTORIES true "${CMAKE_SOURCE_DIR}/firmware/*")
   foreach(_d ${_own_fw})
     get_filename_component(_fw "${_d}" NAME)

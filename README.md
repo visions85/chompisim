@@ -18,7 +18,7 @@ Status: all three factory firmwares boot from their factory cards and play.
 | WAVE 1.0 | yes | yes | yes | presets and options are saved to the card folder; MIDI in works |
 | TAPE 2.0 | yes | yes | yes | samples stream from the card folder (168-file factory card) |
 | TEMPO 1.0 | yes | yes | yes | arpeggiator transport and MIDI clock out work; needs the three small patches in `firmware/patches/tempo` |
-| GRAIN 0.1 | yes | yes | yes | a granular sampler written for this project, in `firmware/grain`; see below |
+| DRONE 0.1 | yes | yes | yes | a granular sampler written for this project, in `firmware/drone`; see below |
 
 Both run modes (realtime and deterministic lockstep) produce the same output.
 
@@ -138,7 +138,7 @@ end, verb and delay, tape speed...; TEMPO: grain, clock division...), what
 CHOMPI, PLAY and LOOP do (record, looper, sequencer, pattern), and, when the
 mode switch is down, the menu layer printed on the caps: the black keys' jobs
 (save, copy, erase, banks, inputs, octave, gate...) and the preset or sample
-slot each white key selects. A firmware with a sound list (GRAIN) gets a
+slot each white key selects. A firmware with a sound list (DRONE) gets a
 SOUND menu in the bar: the card's sounds and the recording slot, with the
 selected one as the firmware reports it; picking a row sends the choice to
 the firmware over its MIDI input. A key map overlay, shown at start
@@ -179,7 +179,7 @@ at start regardless and `--no-tour` never shows it by itself.
 | Key map overlay | `/` (toggle; `--no-keymap` starts without it) |
 | Guided tour | `?` in the bar; right and left arrows step through it, Escape leaves |
 | Boot window (a shared card) | hold `a` `s` `d` or `f`, or click one of the first white caps, while the LEDs fade |
-| Sound menu (GRAIN) | click SOUND in the bar, then a row; Escape or a click elsewhere closes it |
+| Sound menu (DRONE) | click SOUND in the bar, then a row; Escape or a click elsewhere closes it |
 | Quit | Escape |
 
 The knobs do what the firmware makes them do. In WAVE the PITCH knob is a fine
@@ -192,7 +192,7 @@ Shift`) and press the first black key (`w`) for an octave down or the second
 (`e`) for an octave up.
 
 Command line: `--card DIR` (default `card`), `--cards DIR` (a folder of card
-folders, one per firmware), `--firmware wave|tape|tempo|grain` (launcher), `--no-audio`
+folders, one per firmware), `--firmware wave|tape|tempo|drone` (launcher), `--no-audio`
 (run without a sound card), `--pair 0|1` (send the headphone or the line output
 to the sound card, default line), `--scale F`, `--screenshot FILE.bmp`,
 `--exit-after SECONDS`, `--no-keymap`, `--tour`, `--no-tour`.
@@ -242,7 +242,7 @@ the audio, the MIDI output and the key LED. `docs/demo-wave-factory-card.wav`
 was rendered this way from `examples/demo.txt` (normalised afterwards).
 `docs/gui-wave.png` shows the window with the key map overlay and WAVE holding
 a C major chord, `docs/gui-tape.png` the plain panel with TAPE holding the same
-chord, `docs/gui-grain.png` GRAIN with its playheads on the keys and its sound
+chord, `docs/gui-drone.png` DRONE with its playheads on the keys and its sound
 menu open, `docs/gui-tour.png` a step of the guided tour on TAPE,
 `docs/gui-boot.png` the boot window of a shared card, and
 `docs/gui-stub.png` the stand-in core used to develop the front-end.
@@ -344,18 +344,20 @@ What is simulated, and how faithfully:
   sound card stalls, in lockstep mode the firmware clock jumps ahead of the
   script clock.
 
-## GRAIN: a granular sampler firmware
+## DRONE: a granular sampler firmware for drones
 
-`firmware/grain` is a fourth firmware, grown from WAVE: the keybed, LEDs, MIDI,
+`firmware/drone` is a fourth firmware, grown from WAVE: the keybed, LEDs, MIDI,
 presets, menu layer, sequencer, filter, envelope, LFOs and FX chain are
 WAVE's, and the wavetable oscillator is replaced by a grain engine. It lives
 in this repository rather than in the CHOMPI checkout and is built with the
-others (`chompi-sim-gui-grain`, `chompi-sim-grain`).
+others (`chompi-sim-gui-drone`, `chompi-sim-drone`). It was called GRAIN
+until October 2026: a card marked `CHOMPI_GRAIN.txt`, and the `GRAIN/`
+folder of a shared card, still work.
 
 Sounds live in SDRAM as 48 kHz 16-bit stereo, up to ten seconds each: the
 first fourteen `.wav` files on the card in name order (48 kHz 16-bit PCM, mono
 or stereo; anything else is skipped, as are TAPE's `_double` copies) plus one
-recorded from the inputs. `scripts/make-grain-card.py cards/grain` makes a
+recorded from the inputs. `scripts/make-drone-card.py cards/drone` makes a
 card from the factory TAPE samples in the checkout (bank A of the cubbi
 instrument; `--instrument jammi`, `--bank b` pick others) and writes the
 marker file the launcher reads the firmware name from; `--synthetic` makes
@@ -391,19 +393,19 @@ them, sends a choice as CC 32 to the firmware's MIDI input and shows what the
 firmware reports back. Both go on the MIDI out channel of the options file,
 so keep the in and out channels alike if you change them.
 
-GRAIN is also meant for drones and slow ambient textures. In the menu
+DRONE is built for drones and slow ambient textures. In the menu
 (mode switch down, CHOMPI held) the LOOP key switches LATCH: a key starts a
 voice, letting go does nothing, and its next press stops it, so a chord
 sustains without hands. Attack and release reach 30 seconds, the LFOs go
 down to a two-minute sweep, grains up to two seconds, the sequencer down to
 20 beats a minute, and the DRIFT page of the PITCH knob sets every voice
-wandering on its own. `examples/grain-drone.txt` latches a chord with a
+wandering on its own. `examples/drone-chord.txt` latches a chord with a
 slow fade-in and drift and lets it evolve. While latch is on the CHOMPI
 key's LED shows a dim teal, and the LOOP key's LED is teal in the menu.
 
-`examples/grain.txt` plays the first sound, changes the cloud, samples
-`examples/tone.wav` and plays it back; `examples/grain-sounds.txt` picks
-sounds over MIDI. For the hardware, `firmware/grain/code/src`
+`examples/drone.txt` plays the first sound, changes the cloud, samples
+`examples/tone.wav` and plays it back; `examples/drone-sounds.txt` picks
+sounds over MIDI. For the hardware, `firmware/drone/code/src`
 builds like WAVE (`make` with the GNU Arm Embedded 10.3 toolchain, with
 `LIBS_DIR` pointing at a CHOMPI `code/libs` folder); it has not been run on a
 device yet, so treat it as a desktop-tested starting point and watch the CPU
@@ -419,20 +421,20 @@ bootloader's sources):
 
 - `scripts/make-multi-card.py DIR` builds a shared card from the factory
   card profiles: TAPE's files in the root, the others' in `WAVE/`, `TEMPO/`
-  and `GRAIN/`, and every firmware binary (GRAIN's marker file) in the root.
+  and `DRONE/`, and every firmware binary (DRONE's marker file) in the root.
 - WAVE and TEMPO are patched to change directory into their folder after
   mounting the card, when the folder exists
   (`firmware/patches/*/card_folder.patch`; FatFs is built with relative
-  paths, so the patches apply to hardware builds as they are), and GRAIN
+  paths, so the patches apply to hardware builds as they are), and DRONE
   does the same. A card of their own, with no such folder, works as before.
   TAPE is left alone: it opens its files by name in the root, and its build
   has no room to spare.
 - Starting the window on a shared card opens a boot window first: the LEDs
   fade through random colours, as the bootloader's do, except the first white
   caps, which light in their firmware's colour with its name on them (TAPE
-  orange, WAVE blue, TEMPO green, GRAIN magenta); for 2.5 seconds a held
+  orange, WAVE blue, TEMPO green, DRONE magenta); for 2.5 seconds a held
   white key, or a click on one of those caps, picks the firmware: 1 TAPE, 2
-  WAVE, 3 TEMPO, 4 GRAIN, and the other caps dim once one is chosen. The
+  WAVE, 3 TEMPO, 4 DRONE, and the other caps dim once one is chosen. The
   window counts from the first frame it draws, 3 seconds by default
   (`--boot-window SECONDS` changes it; the bootloader's own window is 2
   seconds). With no key it boots what the launcher picked: the last

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Makes a card folder for the GRAIN firmware.
+"""Makes a card folder for the DRONE firmware.
 
 By default it fills the fourteen sounds with the factory TAPE samples (bank A
 of the cubbi instrument, 48 kHz 16-bit stereo) from the CHOMPI checkout, in
 order, and writes the marker file the simulator's launcher reads the firmware
 name from. Any 48 kHz 16-bit mono or stereo WAV works; drop your own in.
 
-    scripts/make-grain-card.py DIR [--tape CARD] [--instrument cubbi|jammi] [--bank a|b|c] [--synthetic]
+    scripts/make-drone-card.py DIR [--tape CARD] [--instrument cubbi|jammi] [--bank a|b|c] [--synthetic]
 
 --tape       the TAPE card folder (default: third_party/CHOMPI/firmware/card-profiles/tape-2.0,
              fetched by scripts/fetch-firmware.sh)
@@ -116,8 +116,8 @@ def main():
         write_wav(os.path.join(out, "03_rain.wav"), texture(), channels=2)
         write_wav(os.path.join(out, "04_bell_c4.wav"), bell())
         n = 4
-    with open(os.path.join(out, "CHOMPI_GRAIN.txt"), "w") as f:
-        f.write("A card for the GRAIN firmware: the simulator's launcher reads the firmware name off this file.\n")
+    with open(os.path.join(out, "CHOMPI_DRONE.txt"), "w") as f:
+        f.write("A card for the DRONE firmware: the simulator's launcher reads the firmware name off this file.\n")
     print("wrote %d sounds to %s%s" % (n, out, "" if synthetic else " (TAPE %s bank %s)" % (instrument, bank)))
 
 if __name__ == "__main__":

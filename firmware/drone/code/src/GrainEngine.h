@@ -1,5 +1,5 @@
 /** @file GrainEngine.h
- *  @brief GRAIN: a granular sampler engine for CHOMPI, grown from WAVE.
+ *  @brief DRONE: a granular sampler engine for CHOMPI, grown from WAVE.
  *
  *  Sounds live in SDRAM as 48 kHz stereo int16, up to ten seconds each: up to
  *  fourteen loaded from the card at boot (the first .wav files in name order)
@@ -189,7 +189,7 @@ namespace grain
         {
             DIR     dir;
             FILINFO fno;
-            if(f_opendir(&dir, ".") != FR_OK) // the current directory: the root, or GRAIN/ on a shared card
+            if(f_opendir(&dir, ".") != FR_OK) // the current directory: the root, or DRONE/ on a shared card
                 return;
             std::vector<std::string> found;
             while(f_readdir(&dir, &fno) == FR_OK && fno.fname[0] != 0)

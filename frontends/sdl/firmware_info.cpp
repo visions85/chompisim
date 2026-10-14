@@ -37,7 +37,7 @@ const FirmwareInfo kFirmwares[4] = {
      "RECORD", "PATTERN", "LATCH", nullptr,
      {"CHROMA", "SLICE", "MIC IN", "AUX IN", "RESAMPLE", "SNAPSHOT A", "SNAPSHOT B", "ERASE", "COPY", "SAVE"},
      "SLOT", "CHOMPI", 0, -1},
-    {"grain", "GRAIN", "0.1", "granular sampler + sequencer", {214, 88, 196, 255},
+    {"drone", "DRONE", "0.1", "granular sampler + sequencer", {214, 88, 196, 255},
      {{"POSITION", "SPRAY", nullptr},
       {"SIZE", "DENSITY", nullptr},
       {"TEXTURE", "SPACE", "FILTER"},

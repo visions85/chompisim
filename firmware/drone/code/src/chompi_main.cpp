@@ -354,9 +354,11 @@ int main(void)
     fsi.Init(FatFSInterface::Config::MEDIA_SD);
     System::Delay(100);
     f_mount(&fsi.GetSDFileSystem(), fsi.GetSDPath(), 1);
-    // on a card shared with other firmwares the sounds and settings live in GRAIN/
-    // (scripts/make-multi-card.py); a card of its own keeps everything in the root
-    f_chdir("/GRAIN");
+    // on a card shared with other firmwares the sounds and settings live in DRONE/
+    // (scripts/make-multi-card.py; GRAIN/ on cards from before the rename); a card
+    // of its own keeps everything in the root
+    if (f_chdir("/DRONE") != FR_OK)
+        f_chdir("/GRAIN");
 
     soundBank.Init(sampleMemory);
     sampleLoader.Init(&soundBank);

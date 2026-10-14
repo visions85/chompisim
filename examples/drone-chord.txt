@@ -1,6 +1,6 @@
-# GRAIN as a drone box: latch on, a slow fade-in and release, drift up, then a chord
+# DRONE as a drone box: latch on, a slow fade-in and release, drift up, then a chord
 # that keeps sounding after the keys are let go and evolves on its own.
-#   chompi-sim-grain --card <card made by scripts/make-grain-card.py> --seconds 75 --script examples/grain-drone.txt --wav out.wav
+#   chompi-sim-drone --card <card made by scripts/make-drone-card.py> --seconds 75 --script examples/drone-chord.txt --wav out.wav
 8.5  toggle down
 8.6  button CHOMPI down     # the menu, held: ...
 8.8  press LOOP 0.1         # LOOP = latch on (the LOOP LED turns teal)

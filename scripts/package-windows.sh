@@ -43,7 +43,7 @@ copy_dlls() {
 }
 for exe in "$OUT"/*.exe; do copy_dlls "$exe"; done
 
-cp "$ROOT/scripts/make-multi-card.py" "$ROOT/scripts/make-grain-card.py" "$OUT"/
+cp "$ROOT/scripts/make-multi-card.py" "$ROOT/scripts/make-drone-card.py" "$OUT"/
 cp -R "$ROOT/examples" "$OUT"/examples
 cp "$ROOT/README.md" "$ROOT/LICENSE" "$ROOT/THIRD_PARTY.md" "$OUT"/
 cat > "$OUT/RUN-ME.txt" <<'TXT'

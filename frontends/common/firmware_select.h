@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -38,7 +39,17 @@ constexpr const char* kExeSuffix = "";
 /** The firmwares the simulator knows, in menu order. */
 inline const std::vector<std::string>& KnownFirmwares()
 {
-    static const std::vector<std::string> k = {"wave", "tape", "tempo", "grain"};
+    static const std::vector<std::string> k = {"wave", "tape", "tempo", "drone"};
+    return k;
+}
+
+/** What a card's marker or binary file name may contain for each firmware: its
+ *  name, and the names it went by (DRONE was GRAIN until October 2026, and the
+ *  cards made for it then still work). */
+inline const std::vector<std::pair<std::string, std::string>>& FirmwareNeedles()
+{
+    static const std::vector<std::pair<std::string, std::string>> k = {
+        {"wave", "wave"}, {"tape", "tape"}, {"tempo", "tempo"}, {"drone", "drone"}, {"grain", "drone"}};
     return k;
 }
 
@@ -79,17 +90,17 @@ inline std::string ExecutableDir(const char* argv0)
 }
 
 /** The firmwares in the order the boot window's keys offer them: white key 1
- *  TAPE, 2 WAVE, 3 TEMPO, 4 GRAIN (the slots are fixed, a missing one stays dark). */
+ *  TAPE, 2 WAVE, 3 TEMPO, 4 DRONE (the slots are fixed, a missing one stays dark). */
 inline const std::vector<std::string>& BootOrder()
 {
-    static const std::vector<std::string> k = {"tape", "wave", "tempo", "grain"};
+    static const std::vector<std::string> k = {"tape", "wave", "tempo", "drone"};
     return k;
 }
 
 /** Every firmware a card folder holds a binary (CHOMPI_WAVE*.bin and friends)
- *  or marker file (CHOMPI_GRAIN.txt) for, in boot order. More than one means a
- *  card made by scripts/make-multi-card.py: TAPE in the root, the others in
- *  WAVE/, TEMPO/ and GRAIN/. */
+ *  or marker file (CHOMPI_DRONE.txt; CHOMPI_GRAIN.txt on older cards) for, in
+ *  boot order. More than one means a card made by scripts/make-multi-card.py:
+ *  TAPE in the root, the others in WAVE/, TEMPO/ and DRONE/. */
 inline std::vector<std::string> DetectFirmwares(const std::string& card_dir)
 {
     std::vector<std::string> found;
@@ -99,9 +110,10 @@ inline std::vector<std::string> DetectFirmwares(const std::string& card_dir)
         std::string n = Lower(e.path().filename().string());
         if(n.size() < 4 || (n.substr(n.size() - 4) != ".bin" && n.substr(n.size() - 4) != ".txt") || n.rfind("chompi", 0) != 0)
             continue;
-        for(const std::string& fw : KnownFirmwares())
-            if(n.find(fw) != std::string::npos && std::find(found.begin(), found.end(), fw) == found.end())
-                found.push_back(fw);
+        for(const auto& needle : FirmwareNeedles())
+            if(n.find(needle.first) != std::string::npos
+               && std::find(found.begin(), found.end(), needle.second) == found.end())
+                found.push_back(needle.second);
     }
     std::vector<std::string> ordered;
     for(const std::string& fw : BootOrder())
@@ -128,9 +140,9 @@ inline std::string BootChoice(const std::string& card_dir)
     while(!s.empty() && (s.back() == '\r' || s.back() == ' '))
         s.pop_back();
     s = Lower(s);
-    for(const std::string& fw : KnownFirmwares())
-        if(s == fw)
-            return fw;
+    for(const auto& needle : FirmwareNeedles())
+        if(s == needle.first)
+            return needle.second;
     return "";
 }
 
