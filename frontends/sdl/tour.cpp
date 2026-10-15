@@ -345,19 +345,29 @@ const TourStep kDrone[] = {
      kKnobKeys},
     {kKnobA, "POSITION knob",
      "Page 1: where in the sound the grains are taken from. Page 2: SPRAY, a random spread around that "
-     "position.",
+     "position. Page 3: DETUNE, unison: every grain detuned at random, up to a quarter tone each way, "
+     "and spread wider across the stereo field.",
      nullptr},
     {kKnobB, "SIZE knob",
-     "Page 1: grain length, 5 to 500 ms. Page 2: DENSITY, from half a grain at a time to eight overlapping.",
+     "Page 1: grain length, 5 ms to 2 s. Page 2: DENSITY, from half a grain at a time to eight overlapping. "
+     "Page 3: HARMONICS, a share of the grains play an octave up or down, a fifth up or two octaves down.",
      nullptr},
     {kKnobC, "TEXTURE knob",
      "Page 1: the grain window, fat to pointed, then past the middle a growing share of reversed grains. "
-     "Page 2: SPACE, delay left of noon, reverb right of it. Page 3: the filter cutoff.",
+     "Page 2: SPACE, delay left of noon, reverb right of it. Page 3: the filter cutoff. Page 4: SHIMMER, "
+     "the reverb fed back into itself an octave up (SPACE past the middle), the classic ambient wash.",
      nullptr},
     {kTransport, "TRANSPORT knob: tempo",
-     "The sequencer's tempo; press it two or more times in a row to tap one in.", kTransportKeys},
-    {kVolume, "VOLUME knob", "Page 1: volume. Page 2: pan. SHIFT + turn: the compressor.", kVolumeKeys},
-    {kPlay, "PLAY key", "Starts and stops the sequencer.", "Space is the PLAY key."},
+     "The sequencer's tempo, and the length of the looper's loop: sixteen beats at the tempo of the moment "
+     "it is switched on. Press it two or more times in a row to tap a tempo in.", kTransportKeys},
+    {kVolume, "VOLUME knob",
+     "Page 1: volume. Page 2: pan. Page 3: LOOPER, how long the looper's layers last: a few passes at the "
+     "left, for ever at the right. SHIFT + turn: the compressor.", kVolumeKeys},
+    {kPlay, "PLAY key: sequencer, or looper",
+     "Switch UP: starts and stops the sequencer. Switch DOWN with CHOMPI held: the LOOPER on or off, a "
+     "tape loop sixteen beats long that records what comes out of the effects on top of what it already "
+     "holds, the old layers fading as the LOOPER page sets. Its LED is amber and flashes at the top of each pass.",
+     "Space is the PLAY key. Tab, hold Left Shift, Space switches the looper."},
     {kLoop, "LOOP key: sequence, or latch",
      "Switch UP: arms recording: every note you press is added as a step, up to 32. Hold LOOP to delete "
      "the last step; hold PLAY + LOOP to clear the sequence. Switch DOWN with CHOMPI held: LATCH on or "

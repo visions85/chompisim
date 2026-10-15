@@ -123,6 +123,11 @@ namespace chompi
                     SetPthLedFloat(6, dled[3], dled[4], dled[5]);
                 }
 
+                // the PLAY key's LED: amber while the looper runs (PLAY with CHOMPI held toggles it)
+                if (engine_->getLooper())
+                    SetPthLedFloat(7, .8f, .36f, 0.f);
+                else
+                    SetPthLedFloat(7, 0.f, 0.f, 0.f);
                 // the LOOP key's LED: teal while keys latch (LOOP with CHOMPI held toggles it)
                 if (engine_->getLatch())
                     SetPthLedFloat(8, 0.f, .6f, .6f);
@@ -495,6 +500,10 @@ namespace chompi
             presets_->SetValue(attack_, slot, 15);
             presets_->SetValue(release_, slot, 16);
             presets_->SetValue(enc_values[2][0], slot, 17); // drift
+            presets_->SetValue(enc_values[2][1], slot, 18); // detune
+            presets_->SetValue(enc_values[2][2], slot, 19); // harmonics
+            presets_->SetValue(enc_values[3][3], slot, 20); // shimmer
+            presets_->SetValue(enc_values[2][5], slot, 21); // looper decay
         }
 
         void SetVoiceSlot(size_t slot)
@@ -510,8 +519,9 @@ namespace chompi
                 //SetVoiceSlot slot==14 idiom) - a COMPLETE default patch, not just
                 //the first pages. Also used for any empty slot.
                 for (int knob = 0; knob < 4; knob++)
-                    for (int page = 0; page < 3; page++)
+                    for (int page = 0; page < 4; page++)
                         enc_values[page][knob] = enc_defaults[page][knob];
+                enc_values[2][5] = enc_defaults[2][5]; // the looper's decay
 
                 attack_ = 0.f;
                 release_ = .3f;
@@ -549,6 +559,10 @@ namespace chompi
                 attack_ = presets_->GetValue(mode, bank, slot, 15);
                 release_ = presets_->GetValue(mode, bank, slot, 16);
                 enc_values[2][0] = presets_->GetValue(mode, bank, slot, 17); // drift
+                enc_values[2][1] = presets_->GetValue(mode, bank, slot, 18); // detune
+                enc_values[2][2] = presets_->GetValue(mode, bank, slot, 19); // harmonics
+                enc_values[3][3] = presets_->GetValue(mode, bank, slot, 20); // shimmer
+                enc_values[2][5] = presets_->GetValue(mode, bank, slot, 21); // looper decay
             }
             sound_idx = engine_->getSound() / float(grain::kNumSounds - 1);
 
@@ -562,6 +576,10 @@ namespace chompi
             engine_->setDelayFeedback(enc_values[1][3]);
             engine_->setMasterCutoff(enc_values[2][3]);
             engine_->setDrift(enc_values[2][0]);
+            engine_->setDetune(enc_values[2][1]);
+            engine_->setHarmonics(enc_values[2][2]);
+            engine_->setShimmer(enc_values[3][3]);
+            engine_->setLooperDecay(enc_values[2][5]);
             engine_->setAttack(attack_);
             engine_->setRelease(release_);
             engine_->setPitchLfoRate(pitch_lfo_rate);
@@ -748,6 +766,15 @@ namespace chompi
                 }
                 return false;
                 break;
+            }
+
+            case static_cast<uint16_t>(Hardware::SwId::KEY_27): // play, with CHOMPI held: the looper on / off
+            {
+                if (!chompi_key_pressed)
+                    return false; // the sequencer's play key as usual
+                if (rising) // a loop of sixteen beats at the tempo of the moment
+                    engine_->setLooper(!engine_->getLooper(), 3840.f / float(clock_manager_->getTempo()));
+                return true;
             }
 
             case static_cast<uint16_t>(Hardware::SwId::KEY_28): // loop, with CHOMPI held: latch on / off

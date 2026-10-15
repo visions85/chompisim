@@ -1,0 +1,20 @@
+# DRONE with the looper and the shimmer: a loop of sixteen beats (12 s at the default tempo)
+# records three notes played across its first passes; each comes round again, fading a little
+# every pass, under the shimmer's octaves.
+#   chompi-sim-drone --card <card made by scripts/make-drone-card.py> --seconds 75 --script examples/drone-looper.txt --wav out.wav
+8.5  toggle down
+8.6  button CHOMPI down     # the menu, held: ...
+8.8  press PLAY 0.1         # PLAY = the looper on: the loop starts empty (the PLAY LED turns amber)
+9.1  button CHOMPI up
+9.3  toggle up
+9.6  encpress 2 0.1         # C knob: page 2, space
+10.0 enc 2 12               # right of the middle: reverb
+10.4 encpress 2 0.1         # page 3: filter
+10.8 encpress 2 0.1         # page 4: shimmer
+11.2 enc 2 18               # the reverb comes back an octave up
+11.6 encpress 1 0.1         # B knob: page 2, density
+12.0 encpress 1 0.1         # page 3: harmonics
+12.4 enc 1 10               # some grains an octave or a fifth away
+13.0 note 12 1.0            # first pass of the loop: a note
+17.0 note 19 1.0            # a fifth above
+26.0 note 24 1.0            # second pass: the octave joins what the first pass holds

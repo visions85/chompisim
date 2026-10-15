@@ -35,7 +35,7 @@ class PresetManager
     static constexpr int kMaxModes = 2; // jammi, cubbi
     static constexpr int kMaxBanks = 3; // a, b, c
     static constexpr int kMaxSlots = 14; // 1, 2, 3, etc.
-    static constexpr int kMaxControls = 18; // DRONE: the layout is in MenuPage::DumpValuePresets
+    static constexpr int kMaxControls = 22; // DRONE: the layout is in MenuPage::DumpValuePresets
     // 0 pitch, 1 cycle, 2 table, 3 attack, 4 pitch-LFO amt, 5 release,
     // 6 filter-LFO amt, 7 cutoff, 8 pitch-LFO rate, 9 delay wet, 10 resonance,
     // 11 filter-LFO rate, 12 delay time, 13 LFO on/off bitfield (pitch=1, filter=2)
@@ -119,7 +119,7 @@ class PresetManager
         if(json_res == JSONSuccess)
         {
             char   query[51];
-            char*  value;
+            char*  value = nullptr;
             size_t value_len;
 
             /** Parse version number. No version number == version 1*/
@@ -136,23 +136,21 @@ class PresetManager
             /** Get module presets */
                     for(int slot = 0; slot < kMaxSlots; slot++)
                     {
-                        // valid? A file saved before the drift control (17 values) keeps its flag one place earlier
+                        // valid? The flag is the last entry of the slot: a file saved by an older
+                        // firmware with fewer controls (17 and up) keeps it earlier
                         uint8_t slotcontrols = numcontrols;
                         sprintf(query, "[%d][%d]", slot, slotcontrols);
                         json_res = JSON_Search(
                             buffer, len, query, strlen(query), &value, &value_len);
-                        if(json_res != JSONSuccess && numcontrols == kMaxControls)
+                        while(json_res != JSONSuccess && numcontrols == kMaxControls && slotcontrols > 17)
                         {
-                            slotcontrols = kMaxControls - 1;
+                            slotcontrols--;
                             sprintf(query, "[%d][%d]", slot, slotcontrols);
                             json_res = JSON_Search(
                                 buffer, len, query, strlen(query), &value, &value_len);
                         }
-                        
-                        char save = value[4];
-                        value[4] = '\0';
-                        bool valid = strcmp(value, "true") == 0;
-                        value[4] = save;
+
+                        bool valid = json_res == JSONSuccess && value_len >= 4 && strncmp(value, "true", 4) == 0;
 
                         if(json_res == JSONSuccess && valid)
                         {

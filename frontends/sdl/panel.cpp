@@ -570,10 +570,21 @@ void DrawKnob(Canvas& cv, const KnobDef& k, const UiState& st)
     cv.Text(cx, cy + R + 6, 1, pages[0] ? kCue : kLabel, pages[0] ? pages[0] : k.label, 0);
     if(pages[1])
     {
+        // the click pages: on one line when short, else the first on its own and the rest below,
+        // so the cues of neighbouring knobs do not run into each other
         std::string more = std::string("push: ") + pages[1];
-        if(pages[2])
-            more += std::string(" / ") + pages[2];
-        cv.Text(cx, cy + R + 6 + kLabelH + 3, 1, kCueDim, more, 0);
+        std::string rest;
+        for(int p = 2; p < 4 && pages[p]; p++)
+            rest += std::string(rest.empty() ? "/ " : " / ") + pages[p];
+        const float y2 = cy + R + 6 + kLabelH + 3;
+        if(!rest.empty() && more.size() + rest.size() + 1 <= 18)
+        {
+            more += " " + rest;
+            rest.clear();
+        }
+        cv.Text(cx, y2, 1, kCueDim, more, 0);
+        if(!rest.empty())
+            cv.Text(cx, y2 + kLabelH + 2, 1, kCueDim, rest, 0);
     }
 }
 
@@ -588,7 +599,7 @@ void DrawFuncKey(Canvas& cv, const FuncKeyDef& f, const UiState& st)
     const FirmwareInfo& fw  = FirmwareByName(st.firmware);
     const bool          menu = Sim::Get().ToggleDown();
     const char* cue = f.button == KEY_CHOMPI ? (menu ? "MENU (hold)" : fw.chompi)
-                      : f.button == KEY_PLAY ? fw.play
+                      : f.button == KEY_PLAY ? (menu && fw.menu_play ? fw.menu_play : fw.play)
                                              : (menu && fw.menu_loop ? fw.menu_loop : fw.loop);
     if(cue)
         cv.Text(r.x + r.w / 2, r.y + r.h + 4, 1, kCue, cue, 0);

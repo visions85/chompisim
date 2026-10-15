@@ -24,10 +24,11 @@ namespace chompi
 
     // Default value for each of the 6 knobs on the normal page
     // knobs: pitch, A, B, C, transport, volume
-    static const float enc_defaults[3][6] = {
+    static const float enc_defaults[4][6] = {
         {.5f, 0.f, .5f, .3f, .5f, .84f},  // page 1  pitch, position, size, texture, tempo, gain
         {.5f, .15f, .5f, .5f, 0.f, .5f},  // page 2  scan, spray, density, space (.5 = dry), -, pan
-        {0.f, 0.f, 0.f, .5f, 0.f, 0.f},   // page 3  drift, -, -, filter cutoff
+        {0.f, 0.f, 0.f, .5f, 0.f, .7f},   // page 3  drift, detune, harmonics, filter cutoff, -, looper decay
+        {0.f, 0.f, 0.f, 0.f, 0.f, 0.f},   // page 4  -, -, -, shimmer
     };
 
     // Remaps MIDI note numbers to the UI key system
@@ -274,11 +275,13 @@ namespace chompi
         {
             // the preset layout of MenuPage::DumpValuePresets: pitch, position, size, texture,
             // scan, spray, density, space, cutoff, pitch lfo rate, resonance, filter lfo rate,
-            // delay time, lfo switches, sound, attack, release, drift
+            // delay time, lfo switches, sound, attack, release, drift, detune, harmonics,
+            // shimmer, looper decay
             float defaults[PresetManager::kMaxControls] = {
                 enc_defaults[0][0], enc_defaults[0][1], enc_defaults[0][2], enc_defaults[0][3],
                 enc_defaults[1][0], enc_defaults[1][1], enc_defaults[1][2], enc_defaults[1][3],
-                enc_defaults[2][3], .58f, .63f, .58f, .4f, 0.f, 0.f, 0.f, .3f, enc_defaults[2][0]};
+                enc_defaults[2][3], .58f, .63f, .58f, .4f, 0.f, 0.f, 0.f, .3f, enc_defaults[2][0],
+                enc_defaults[2][1], enc_defaults[2][2], enc_defaults[3][3], enc_defaults[2][5]};
 
             presets_manager->Init(defaults);
 
@@ -402,10 +405,10 @@ namespace chompi
         bool toggle_state;
 
         // this way both UI pages can interact with it
-        float enc_values[3][6];
-        float* enc_rows[3] = {enc_values[0], enc_values[1], enc_values[2]};
+        float enc_values[4][6];
+        float* enc_rows[4] = {enc_values[0], enc_values[1], enc_values[2], enc_values[3]};
 
-        const float* def_rows[3] = {enc_defaults[0], enc_defaults[1], enc_defaults[2]};
+        const float* def_rows[4] = {enc_defaults[0], enc_defaults[1], enc_defaults[2], enc_defaults[3]};
 
         uint8_t knob_page[6] = {0, 0, 0, 0, 0, 0};
 

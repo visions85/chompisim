@@ -4,14 +4,17 @@
 8.5  toggle down
 8.6  button CHOMPI down     # the menu, held: ...
 8.8  press LOOP 0.1         # LOOP = latch on (the LOOP LED turns teal)
-9.1  enc 0 12               # A: attack up, coarse steps (about 8 s)
-9.4  enc 1 12               # B: release up (about 23 s)
+9.1  enc 0 7                # A: attack up (about 10 s)
+9.4  enc 1 10               # B: release up (about 23 s)
 9.7  button CHOMPI up
 9.9  toggle up
 10.2 encpress 3 0.1         # PITCH knob: page 2, scan
 10.5 encpress 3 0.1         # page 3: drift
 10.8 enc 3 60               # drift up: every voice wanders on its own
-11.0 enc 1 -10              # B page 1: longer grains
+11.0 enc 1 10               # B page 1: longer grains, 0.6 s
+11.1 encpress 0 0.1         # A knob: page 2, spray
+11.2 encpress 0 0.1         # page 3: detune
+11.3 enc 0 13               # unison: the grains spread in pitch and across the field
 11.5 note 12 0.2            # a chord, each key tapped: latched, it fades in and stays
 12.0 note 19 0.2
 12.5 note 24 0.2

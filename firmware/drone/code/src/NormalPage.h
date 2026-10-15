@@ -14,10 +14,11 @@
 
 namespace chompi
 {
-        static const uint8_t cc_map[3][6] = {
+        static const uint8_t cc_map[4][6] = {
             {20, 21, 22, 23, 24, 25},
             {26, 27, 28, 29, 0, 30},
-            {33, 0, 0, 31, 0, 0}}; // third pages: PITCH's drift is CC 33, C's filter cutoff CC 31 (32 selects the sound)
+            {33, 34, 35, 31, 0, 37},  // third pages: drift, detune, harmonics, filter cutoff, -, looper decay (32 selects the sound)
+            {0, 0, 0, 36, 0, 0}};     // fourth page: C's shimmer
 
         static const uint8_t key_map[40] = {
             0x01, /**< ENC_1_SW  page */
@@ -128,9 +129,10 @@ namespace chompi
     static const float purple[3] = {.58f, .05f, 1.f};
     static const float pink[3] = {1.f, .36f, .62f};
 
-    // Number of pages per knob. Cycled through by clicking. DRONE: pitch/scan,
-    // position/spray, size/density, texture/space/filter, tempo, gain/pan
-    static const uint8_t knob_num_pages[6] = {3, 2, 2, 3, 1, 2}; // PITCH: pitch, scan, drift
+    // Number of pages per knob. Cycled through by clicking. DRONE: pitch/scan/drift,
+    // position/spray/detune, size/density/harmonics, texture/space/filter/shimmer,
+    // tempo, gain/pan/looper
+    static const uint8_t knob_num_pages[6] = {3, 3, 3, 4, 1, 3};
 
     /** The lower row of keys, left to right, as button ids: the playhead runs along them. */
     static const uint8_t lower_row_keys[15] = {15, 8, 9, 10, 11, 16, 17, 18, 19, 20, 24, 25, 26, 27, 28};
@@ -319,14 +321,22 @@ namespace chompi
                         g = color_xfade(yellow[1], orange[1], value);
                         b = color_xfade(yellow[2], orange[2], value);
                     }
-                    else // spray
+                    else if (page == 1) // spray
                     {
                         r = color_xfade(purple[0] * .2f, purple[0], value);
                         g = color_xfade(purple[1] * .2f, purple[1], value);
                         b = color_xfade(purple[2] * .2f, purple[2], value);
 
                         engine_->setSpray(value);
-                    } 
+                    }
+                    else // detune: unison, blue to pink as the grains spread
+                    {
+                        r = color_xfade(med_blue[0], pink[0], value);
+                        g = color_xfade(med_blue[1], pink[1], value);
+                        b = color_xfade(med_blue[2], pink[2], value);
+
+                        engine_->setDetune(value);
+                    }
 
                     SetPthLedFloat(2, r, g, b);
                     break;
@@ -341,7 +351,7 @@ namespace chompi
 
                         engine_->setSize(value);
                     }
-                    else // density
+                    else if (page == 1) // density
                     {
                         r = color_xfade(purple[0] * .2f, purple[0], value);
                         g = color_xfade(purple[1] * .2f, purple[1], value);
@@ -349,11 +359,19 @@ namespace chompi
 
                         engine_->setDensity(value);
                     }
+                    else // harmonics: gold to white as more grains play at octaves and fifths
+                    {
+                        r = color_xfade(yellow[0] * .35f, white[0], value);
+                        g = color_xfade(yellow[1] * .35f, white[1], value);
+                        b = color_xfade(yellow[2] * .35f, white[2], value);
+
+                        engine_->setHarmonics(value);
+                    }
 
                     SetPthLedFloat(3, r, g, b);
                     break;
                 }
-                case 3: // texture, space, filter
+                case 3: // texture, space, filter, shimmer
                 {
                     if (page == 0) // texture: window shape, then reversed grains
                     {
@@ -369,12 +387,19 @@ namespace chompi
                         g = color_triple_xfade(green[1], (green[1] + blue[1]) * .5f, blue[1], value);
                         b = color_triple_xfade(green[2], (green[2] + blue[2]) * .5f, blue[2], value);
                     }
-                    else // filter
+                    else if (page == 2) // filter
                     {
                         engine_->setMasterCutoff(value);
                         r = color_triple_xfade(purple[0], pink[0], 1.f, value);
                         g = color_triple_xfade(purple[1], pink[1], 1.f, value);
                         b = color_triple_xfade(purple[2], pink[2], 1.f, value);
+                    }
+                    else // shimmer: dim purple to white as the octave builds
+                    {
+                        engine_->setShimmer(value);
+                        r = color_xfade(purple[0] * .35f, white[0], value);
+                        g = color_xfade(purple[1] * .35f, white[1], value);
+                        b = color_xfade(purple[2] * .35f, white[2], value);
                     }
 
                     SetPthLedFloat(4, r, g, b);
@@ -439,13 +464,21 @@ namespace chompi
 
                         engine_->setGain(value);
                     }
-                    else
+                    else if (page == 1)
                     {
                         r = color_xfade(blue[0], red[0], value);
                         g = color_xfade(blue[1], red[1], value);
                         b = color_xfade(blue[2], red[2], value);
 
                         engine_->setPan(value);
+                    }
+                    else // looper decay: amber, brighter the longer the layers last
+                    {
+                        r = .3f + .7f * value;
+                        g = (.3f + .7f * value) * .45f;
+                        b = 0.f;
+
+                        engine_->setLooperDecay(value);
                     }
                     SetPthLedFloat(9, r, g, b);
                     break;
@@ -464,6 +497,12 @@ namespace chompi
                 r = teal[0];
                 g = teal[1];
                 b = teal[2];
+            }
+            else if (engine_->getLooper()) { // the looper: amber, a flash at the top of each pass
+                const float f = engine_->looperPhase() < .03f ? 1.f : .35f;
+                r = f;
+                g = .45f * f;
+                b = 0.f;
             }
             else if (seq_->getSequence()) {
                 r = teal[0] * .1f;
@@ -832,6 +871,10 @@ namespace chompi
             presets_->SetValue(enc_values[1][3], slot, 7); // space
             presets_->SetValue(enc_values[2][3], slot, 8); // cutoff
             presets_->SetValue(enc_values[2][0], slot, 17); // drift
+            presets_->SetValue(enc_values[2][1], slot, 18); // detune
+            presets_->SetValue(enc_values[2][2], slot, 19); // harmonics
+            presets_->SetValue(enc_values[3][3], slot, 20); // shimmer
+            presets_->SetValue(enc_values[2][5], slot, 21); // looper decay
         }
 
         inline bool getSwitchState() { return switch_state; }

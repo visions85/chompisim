@@ -91,7 +91,7 @@ class Reverb {
     //c.Interpolate(ap1, 10.0f, LFO_1, 80.0f, 1.0f);
     //c.Write(ap1, 100, 0.0f);
 
-    c.Read(*left + *right, gain);
+    c.Read(*left + *right + extra_in_, gain);
 
     // Diffuse through 4 allpasses.
     c.Read(ap1 TAIL, kap);
@@ -114,6 +114,7 @@ class Reverb {
     c.WriteAllPass(dap1b, -kap);
     c.Write(del1, 2.0f);
     c.Write(wet, 0.0f);
+    wet_l_ = wet;
 
     *left += (wet - *left) * amount;
 
@@ -126,6 +127,7 @@ class Reverb {
     c.WriteAllPass(dap2b, kap);
     c.Write(del2, 2.0f);
     c.Write(wet, 0.0f);
+    wet_r_ = wet;
 
     *right += (wet - *right) * amount;
           
@@ -156,6 +158,12 @@ class Reverb {
   inline void Clear() {
     engine_.Clear();
   }
+
+  /** DRONE: a signal added to the input (the shimmer's feedback), and the
+   *  last wet output before the dry mix, for it to shift. */
+  inline void SetExtraInput(float x) { extra_in_ = x; }
+  inline float WetLeft() const { return wet_l_; }
+  inline float WetRight() const { return wet_r_; }
   
  private:
   typedef FxEngine<32768, FORMAT_16_BIT> E;
@@ -169,6 +177,8 @@ class Reverb {
   
   float lp_decay_1_;
   float lp_decay_2_;
+  float extra_in_ = 0.f;
+  float wet_l_ = 0.f, wet_r_ = 0.f;
   
   uint16_t  buffer_[32768];
 };

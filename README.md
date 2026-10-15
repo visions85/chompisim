@@ -367,14 +367,14 @@ Each held key plays a cloud of up to twelve grains from the selected sound,
 at the key's pitch relative to the middle key, which plays the sound at its
 own speed. The knobs:
 
-| Knob | Page 1 | Click | Click again |
-|---|---|---|---|
-| PITCH | pitch, fine | scan: frozen at the left, natural speed in the middle, four times at the right | drift: how far each voice wanders on its own, grain position, pitch and pan on slow random walks |
-| A | position in the sound | spray, random spread around the position | |
-| B | grain size, 5 ms to 2 s | density, half a grain to eight grains at a time | |
-| C | texture: fat windows to pointed ones, then a growing share of reversed grains | space, delay to the left, reverb to the right | filter cutoff |
-| transport | tempo, tap to set | | |
-| volume | volume | pan | |
+| Knob | Page 1 | Click | Click again | And again |
+|---|---|---|---|---|
+| PITCH | pitch, fine | scan: frozen at the left, natural speed in the middle, four times at the right | drift: how far each voice wanders on its own, grain position, pitch and pan on slow random walks | |
+| A | position in the sound | spray, random spread around the position | detune: unison, every grain detuned at random up to a quarter tone each way, and spread wider | |
+| B | grain size, 5 ms to 2 s | density, half a grain to eight grains at a time | harmonics: a share of the grains, up to half, play an octave up or down, a fifth up or two octaves down | |
+| C | texture: fat windows to pointed ones, then a growing share of reversed grains | space, delay to the left, reverb to the right | filter cutoff | shimmer: the reverb fed back into itself an octave up |
+| transport | tempo, tap to set; also the looper's loop length | | | |
+| volume | volume | pan | looper: how long its layers last | |
 
 The lower row of key LEDs shows where each sounding voice is reading in the
 sound. With the mode switch up, holding CHOMPI records the microphone (or the
@@ -399,9 +399,31 @@ voice, letting go does nothing, and its next press stops it, so a chord
 sustains without hands. Attack and release reach 30 seconds, the LFOs go
 down to a two-minute sweep, grains up to two seconds, the sequencer down to
 20 beats a minute, and the DRIFT page of the PITCH knob sets every voice
-wandering on its own. `examples/drone-chord.txt` latches a chord with a
-slow fade-in and drift and lets it evolve. While latch is on the CHOMPI
-key's LED shows a dim teal, and the LOOP key's LED is teal in the menu.
+wandering on its own. While latch is on the CHOMPI key's LED shows a dim
+teal, and the LOOP key's LED is teal in the menu.
+
+The third pages of A and B thicken the cloud: DETUNE is unison, every grain
+detuned at random by up to a quarter tone each way and panned wider the
+further the knob goes, and HARMONICS sends a share of the grains, up to
+half, an octave up or down, a fifth up or two octaves down, a little
+quieter than the rest. The fourth page of C is SHIMMER: the reverb's output
+comes back into it an octave up (a windowed delay-line shifter, darkened
+and softly limited so it builds into a wash and still dies away), which
+needs SPACE right of the middle to be heard; the menu's C knob sets how
+long the reverb holds it. The PLAY key in the menu switches the LOOPER, a
+sound-on-sound tape loop after the effects: it starts empty, sixteen beats
+long at the tempo of the moment (twelve seconds at the default 80 BPM, up
+to a minute), records what comes out of the effects on top of what it
+already holds, and plays it back with the live sound; the third page of the
+VOLUME knob sets how long the layers last, from a few passes at the left to
+for ever at the right, and the loop saturates gently like tape instead of
+clipping. Its LED is amber, flashing at the top of each pass, and switching
+it off fades the loop out over a second. Over MIDI the new pages are CC 34
+(detune), 35 (harmonics), 36 (shimmer) and 37 (looper decay), and presets
+keep them (fields 18 to 21; files saved before still load).
+`examples/drone-chord.txt` latches a chord with a slow fade-in, drift and
+detune and lets it evolve; `examples/drone-looper.txt` layers three notes
+in the looper under the shimmer.
 
 `examples/drone.txt` plays the first sound, changes the cloud, samples
 `examples/tone.wav` and plays it back; `examples/drone-sounds.txt` picks

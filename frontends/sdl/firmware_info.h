@@ -15,11 +15,12 @@ struct FirmwareInfo
     const char* version;
     const char* tagline;
     SDL_Color   accent;
-    const char* knob[6][3];      /**< by chompi_sim::Encoder (SW1..SW6): the function on each click page */
+    const char* knob[6][4];      /**< by chompi_sim::Encoder (SW1..SW6): the function on each click page */
     const char* chompi;          /**< the CHOMPI key with the mode switch up */
     const char* play;
     const char* loop;
     const char* menu_loop;       /**< what LOOP does in the menu, nullptr if nothing */
+    const char* menu_play;       /**< what PLAY does in the menu, nullptr if nothing */
     const char* menu_black[10];  /**< the black keys, left to right, in the menu (mode switch down + CHOMPI) */
     const char* menu_white;      /**< the white keys in the menu, numbered 1..14 */
     const char* menu_white15;    /**< the fifteenth white key in the menu */

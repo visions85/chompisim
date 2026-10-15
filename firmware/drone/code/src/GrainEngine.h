@@ -17,6 +17,7 @@
 #include "EnvFollower.h"
 #include "limiter.h"
 #include "reverb.h"
+#include "shimmer.h"
 #include "InterpolatedDelayLine.h"
 #include <vector>
 #include <string>
@@ -75,6 +76,8 @@ namespace grain
     constexpr float    kMicGain        = 4.f;
     constexpr float    kLineGain       = 2.f;
     constexpr float    kSprayRangeS    = 1.f;            /**< full spray = +/- one second around the playhead */
+    constexpr uint32_t kLoopSeconds    = 60;             /**< the longest sound-on-sound loop */
+    constexpr uint32_t kLoopSamples    = kLoopSeconds * 48000 * 2; /**< stereo int16: 11.5 MB of SDRAM */
     constexpr float    kS16ToFloat     = 1.f / 32768.f;
 
     /** One sound in SDRAM. */
@@ -346,6 +349,10 @@ namespace grain
             grain_gain_ = .9f / sqrtf(overlap_);
         }
         void setSpray(float v) { spray_ = fclamp(v, 0.f, 1.f); }
+        /** Unison: every grain detuned at random, up to a quarter tone each way, and spread wider. */
+        void setDetune(float v) { detune_ = fclamp(v, 0.f, 1.f); }
+        /** Harmonics: a share of the grains, up to half, play an octave up or down, a fifth up, or two octaves down. */
+        void setHarmonics(float v) { harmonics_ = fclamp(v, 0.f, 1.f); }
         /** Window shape, and above the middle a growing share of reversed grains. */
         void setTexture(float v)
         {
@@ -490,15 +497,24 @@ namespace grain
                 while(start >= ff)
                     start -= ff;
                 const bool reverse = Rand() < reverse_prob_;
-                const float pan    = .5f + (Rand() - .5f) * .6f;
+                const float pan    = .5f + (Rand() - .5f) * (.6f + .4f * detune_);
+                // unison: a random detune, up to 50 cents each way at full
+                float ratio = detune_ > 0.f ? exp2f((Rand() * 2.f - 1.f) * detune_ * (50.f / 1200.f)) : 1.f;
+                float amp   = grain_gain_;
+                if(harmonics_ > 0.f && Rand() < harmonics_ * .5f) // a harmonic grain, a little quieter
+                {
+                    const float which = Rand();
+                    ratio *= which < .4f ? 2.f : which < .65f ? .5f : which < .85f ? 1.5f : .25f;
+                    amp *= .8f;
+                }
                 g->active     = true;
                 g->reverse    = reverse;
                 g->pos        = start;
-                g->step       = reverse ? -rate_ : rate_;
+                g->step       = (reverse ? -rate_ : rate_) * ratio;
                 g->age        = 0;
                 g->length     = uint32_t(len);
                 g->inv_length = 1.f / len;
-                g->amp        = grain_gain_;
+                g->amp        = amp;
                 g->pan_l      = 1.f - pan;
                 g->pan_r      = pan;
             }
@@ -514,6 +530,7 @@ namespace grain
         float          rate_  = 1.f;
         float          size_s_ = .1f, overlap_ = 2.f, grain_gain_ = .6f, spray_ = 0.f, scan_rate_ = 1.f;
         float          position_ = 0.f, playhead_ = 0.f, reverse_prob_ = 0.f, win_mix_ = 0.f, drift_offset_ = 0.f;
+        float          detune_ = 0.f, harmonics_ = 0.f;
         int            win_a_ = 0;
         uint32_t       spawn_counter_ = 0;
     };
@@ -649,8 +666,12 @@ class myEngine {
     grainVoice myVoices[NUM_VOICES];
 
     void Init(float sample_rate, InterpolatedDelayLine::AudioSample* del, daisysp::Reverb* reverb,
-              grain::SoundBank* bank, grain::SampleLoader* loader) {
+              grain::SoundBank* bank, grain::SampleLoader* loader,
+              int16_t* loop_mem, float* shimmer_mem) {
+        sr_ = sample_rate;
         windows_.Init();
+        loop_mem_ = loop_mem;
+        shifter_.Init(shimmer_mem);
         bank_ = bank;
         loader_ = loader;
         sound_ = 0;
@@ -762,6 +783,7 @@ class myEngine {
         }
 
         ApplyFX(out[0], out[1], size);
+        ApplyLooper(out[0], out[1], size);
 
         for (size_t i = 0; i < size; ++i) {
             fonepole(final_lim_, final_lim_target_, .001f);
@@ -842,12 +864,54 @@ class myEngine {
 
         for (size_t i = 0; i < size; ++i) {
             fonepole(reverb_time, reverb_time_target, .001f);
+            fonepole(shimmer_, shimmer_target_, .001f);
             reverb_->SetAmount(reverb_amount * reverb_amount * .8f);
             reverb_->SetTime(reverb_time);
             reverb_->SetLowpass(reverb_amount * .6f + .4f);
             reverb_->SetDiffusion(reverb_amount * .6f);
 
+            // the shimmer: the reverb's last output, an octave up, back into its input,
+            // darkened and softly limited so it builds into a wash rather than a scream
+            if (shimmer_ > .001f) {
+                const float up = shifter_.Process((reverb_->WetLeft() + reverb_->WetRight()) * .5f);
+                shimmer_hp_ += (up - shimmer_hp_) * .013f;                // no rumble builds up (100 Hz)
+                shimmer_lp_ += ((up - shimmer_hp_) - shimmer_lp_) * .35f; // nor the top end (4 kHz)
+                const float gain = powf(shimmer_, 1.5f) * 1.2f;           // below unity round the loop at the top
+                reverb_->SetExtraInput(daisysp::SoftClip(shimmer_lp_ * gain));
+            }
+            else {
+                reverb_->SetExtraInput(0.f);
+            }
+
             reverb_->Process(&outl[i], &outr[i]);
+        }
+    }
+
+    /** The sound-on-sound looper: a tape loop that records what comes out of the
+     *  effects on top of what it already holds, the old layers fading as the
+     *  decay sets; the loop plays along with the live signal. */
+    void ApplyLooper(float* outl, float* outr, size_t size) {
+        if (!loop_mem_ || loop_frames_ == 0 || (!loop_on_ && loop_fade_ <= 0.f))
+            return;
+        const float fade_step = 1.f / sr_; // switched off, the loop takes a second to go
+        for (size_t i = 0; i < size; ++i) {
+            fonepole(loop_decay_, loop_decay_target_, .0005f);
+            if (!loop_on_)
+                loop_fade_ = loop_fade_ > fade_step ? loop_fade_ - fade_step : 0.f;
+            const size_t p  = size_t(loop_pos_) * 2;
+            const float  ll = loop_first_pass_ ? 0.f : s162f(loop_mem_[p]) * loop_fade_;
+            const float  lr = loop_first_pass_ ? 0.f : s162f(loop_mem_[p + 1]) * loop_fade_;
+            if (loop_on_) {
+                // tape: the live signal goes in on top of the decayed loop, gently saturated
+                loop_mem_[p]     = int16_t(f2s16(daisysp::SoftClip(outl[i] + ll * loop_decay_)));
+                loop_mem_[p + 1] = int16_t(f2s16(daisysp::SoftClip(outr[i] + lr * loop_decay_)));
+            }
+            outl[i] += ll;
+            outr[i] += lr;
+            if (++loop_pos_ >= loop_frames_) {
+                loop_pos_        = 0;
+                loop_first_pass_ = false;
+            }
         }
     }
 
@@ -858,6 +922,32 @@ class myEngine {
     void setDensity(float v)  { for (auto& voice : myVoices) voice.cloud.setDensity(v); }
     void setTexture(float v)  { for (auto& voice : myVoices) voice.cloud.setTexture(v); }
     void setScan(float v)     { for (auto& voice : myVoices) voice.cloud.setScan(v); }
+    void setDetune(float v)   { for (auto& voice : myVoices) voice.cloud.setDetune(v); }
+    void setHarmonics(float v) { for (auto& voice : myVoices) voice.cloud.setHarmonics(v); }
+
+    /** Shimmer: how much of the reverb comes back into it an octave up (needs SPACE past the middle). */
+    void setShimmer(float v) { shimmer_target_ = fclamp(v, 0.f, 1.f); }
+
+    /** The looper's decay per pass: a few passes at the bottom, forever at the top. */
+    void setLooperDecay(float v) { loop_decay_target_ = .3f + .7f * fclamp(v, 0.f, 1.f); }
+    /** Switches the looper: on, a loop of that many seconds starts empty and records;
+     *  off, what it holds fades out over a second. */
+    void setLooper(bool on, float seconds) {
+        if (on == loop_on_)
+            return;
+        loop_on_ = on;
+        if (on) {
+            loop_frames_     = uint32_t(fclamp(seconds, 1.f, float(grain::kLoopSeconds)) * sr_);
+            loop_pos_        = 0;
+            loop_first_pass_ = true; // the old contents are not read, only written over
+            loop_fade_       = 1.f;
+            loop_decay_      = loop_decay_target_;
+        }
+    }
+    bool getLooper() const { return loop_on_; }
+    float looperSeconds() const { return float(loop_frames_) / sr_; }
+    /** 0..1: where the loop is in its pass. */
+    float looperPhase() const { return loop_frames_ ? float(loop_pos_) / float(loop_frames_) : 0.f; }
 
     /** Which sound the voices play: 0..13 from the card, 14 the recording. */
     void selectSound(int idx) {
@@ -1238,6 +1328,13 @@ class myEngine {
     bool pitch_lfo_on = false;
     bool filter_lfo_on = false;
     bool latch_ = false;
+    float sr_ = 48000.f;
+    chompi::OctaveShifter shifter_;
+    float shimmer_ = 0.f, shimmer_target_ = 0.f, shimmer_lp_ = 0.f, shimmer_hp_ = 0.f;
+    int16_t* loop_mem_ = nullptr;
+    uint32_t loop_frames_ = 0, loop_pos_ = 0;
+    bool loop_on_ = false, loop_first_pass_ = true;
+    float loop_fade_ = 0.f, loop_decay_ = .79f, loop_decay_target_ = .79f;
     InterpolatedDelayLine del_;
     daisysp::Reverb *reverb_;
     EnvFollower output_env_follower;

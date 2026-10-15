@@ -14,7 +14,7 @@ const FirmwareInfo kFirmwares[4] = {
       {"PITCH", "WAVETABLE", nullptr},    // PITCH
       {"TEMPO", nullptr, nullptr},        // transport: tap or turn
       {"VOLUME", "PAN", nullptr}},        // volume
-     "MUTE / REST", "SEQ PLAY", "SEQ LOOP", nullptr,
+     "MUTE / REST", "SEQ PLAY", "SEQ LOOP", nullptr, nullptr,
      {"OCT -", "OCT +", "GATE 10%", "GATE 50%", "GATE 100%", "PITCH LFO", "FILT LFO", "ERASE", "COPY", "SAVE"},
      "PRESET", "DEFAULT", 0, -1},
     {"tape", "TAPE", "2.0", "sampler + tape looper", {236, 122, 52, 255},
@@ -24,7 +24,7 @@ const FirmwareInfo kFirmwares[4] = {
       {"PITCH", "LEVEL", nullptr},
       {"TAPE SPEED", nullptr, nullptr},
       {"VOLUME", "INPUT GAIN", nullptr}},
-     "RECORD", "LOOPER", "LOOPER REC", nullptr,
+     "RECORD", "LOOPER", "LOOPER REC", nullptr, nullptr,
      {"JAMMI BANK", "CUBBI BANK", "MIC IN", "AUX IN", "RESAMPLE", "FX PRE", "FX POST", "ERASE", "COPY", "SAVE"},
      "SLOT", "CHOMPI", 0, -1},
     {"tempo", "TEMPO", "1.0", "pattern generator, two engines", {76, 188, 118, 255},
@@ -34,17 +34,17 @@ const FirmwareInfo kFirmwares[4] = {
       {"PITCH", "VOLUME", "FILTER"},
       {"TEMPO", nullptr, nullptr},        // held + turn: clock division
       {"VOLUME", "INPUT GAIN", nullptr}},
-     "RECORD", "PATTERN", "LATCH", nullptr,
+     "RECORD", "PATTERN", "LATCH", nullptr, nullptr,
      {"CHROMA", "SLICE", "MIC IN", "AUX IN", "RESAMPLE", "SNAPSHOT A", "SNAPSHOT B", "ERASE", "COPY", "SAVE"},
      "SLOT", "CHOMPI", 0, -1},
     {"drone", "DRONE", "0.1", "granular sampler + sequencer", {214, 88, 196, 255},
-     {{"POSITION", "SPRAY", nullptr},
-      {"SIZE", "DENSITY", nullptr},
-      {"TEXTURE", "SPACE", "FILTER"},
+     {{"POSITION", "SPRAY", "DETUNE"},
+      {"SIZE", "DENSITY", "HARMONICS"},
+      {"TEXTURE", "SPACE", "FILTER", "SHIMMER"},
       {"PITCH", "SCAN", "DRIFT"},
       {"TEMPO", nullptr, nullptr},
-      {"VOLUME", "PAN", nullptr}},
-     "RECORD", "SEQ PLAY", "SEQ LOOP", "LATCH",
+      {"VOLUME", "PAN", "LOOPER"}},
+     "RECORD", "SEQ PLAY", "SEQ LOOP", "LATCH", "LOOPER",
      {"OCT -", "OCT +", "GATE 10%", "GATE 50%", "GATE 100%", "PITCH LFO", "FILT LFO", "ERASE", "COPY", "SAVE"},
      "PRESET", "DEFAULT", 32, 14}, // CC 32 / program change pick a sound, see MidiManager.h and MainLoop
 };
@@ -57,7 +57,7 @@ const FirmwareInfo& FirmwareByName(const std::string& id)
     static const FirmwareInfo plain = {"", "", "", "", {120, 124, 140, 255},
                                        {{nullptr, nullptr, nullptr}, {nullptr, nullptr, nullptr}, {nullptr, nullptr, nullptr},
                                         {nullptr, nullptr, nullptr}, {nullptr, nullptr, nullptr}, {nullptr, nullptr, nullptr}},
-                                       nullptr, nullptr, nullptr, nullptr,
+                                       nullptr, nullptr, nullptr, nullptr, nullptr,
                                        {nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr},
                                        nullptr, nullptr, 0, -1};
     return plain;
