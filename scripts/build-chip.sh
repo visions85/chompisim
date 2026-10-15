@@ -22,7 +22,23 @@ if [ ! -f "$LIBS/libDaisy/core/Makefile" ]; then
   fi
   [ -f "$LIBS/libDaisy/core/Makefile" ] || { echo "libDaisy not found under $LIBS" >&2; exit 1; }
 fi
-[ -f "$LIBS/libDaisy/build/libdaisy.a" ] || make -C "$LIBS/libDaisy" -j"$(nproc)"
-[ -f "$LIBS/DaisySP/build/libdaisysp.a" ] || make -C "$LIBS/DaisySP" -j"$(nproc)"
+# The checkout carries archives built by CHOMPI Club's toolchain; the firmware links against
+# archives built by the toolchain in use, so each library is rebuilt from source when the
+# compiler that built it (remembered in a stamp) is not this one.
+TOOLCHAIN="$(arm-none-eabi-gcc --version | head -1)"
+RELINK=0
+build_lib() {
+  local dir="$1" archive="$2" stamp="$1/build/.toolchain"
+  if [ ! -f "$dir/build/$archive" ] || [ "$(cat "$stamp" 2>/dev/null)" != "$TOOLCHAIN" ]; then
+    make -C "$dir" clean >/dev/null 2>&1 || true
+    make -C "$dir" -j"$(nproc)"
+    echo "$TOOLCHAIN" > "$stamp"
+    RELINK=1
+  fi
+}
+build_lib "$LIBS/libDaisy" libdaisy.a
+build_lib "$LIBS/DaisySP" libdaisysp.a
+# a rebuilt library means the firmware links again, whether or not its own sources changed
+[ "$RELINK" = 1 ] && rm -rf "$ROOT/firmware/drone/code/src/build"
 make -C "$ROOT/firmware/drone/code/src" LIBS_DIR="$LIBS" -j"$(nproc)" | grep -E "Memory region|RAM|SRAM|FLASH" || true
 ls -l "$ROOT/firmware/drone/code/src/build/CHOMPI.bin"
