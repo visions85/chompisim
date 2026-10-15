@@ -17,6 +17,7 @@
 #include "firmware_info.h"
 #include "font.h"
 #include "tour.h"
+#include "lesson.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -159,7 +160,7 @@ constexpr float kLogY    = 392 + kBarH;
 constexpr float kLogDy   = 10;
 constexpr float kTextX   = 16;
 
-const char* const kHint1 = "/ key map   ? in the bar = tour   PIANO a s d f g h j k l ; ' = white   w e t y u o p = black   "
+const char* const kHint1 = "/ key map   ? = tour   F11 = lesson   PIANO a s d f g h j k l ; ' = white   w e t y u o p = black   "
                            "z x = octave   SPACE play   RETURN loop   L-SHIFT chompi (hold)   TAB mode   ESC quit";
 const char* const kHint2 = "KNOBS  drag or scroll = turn   click = push   right-click = hold   [ ] transport   - = volume   "
                            "LEFT/RIGHT last small knob   F1-F6 push   F7/F8 input play/stop  F9 mic  F10 load";
@@ -754,11 +755,15 @@ bool HasSoundMenu(const UiState& st)
     return FirmwareByName(st.firmware).sound_cc != 0;
 }
 
-/** The ? at the right end of the bar: the guided tour. */
-constexpr float kHelpW = 20.f;
+/** The ? at the right end of the bar: the guided tour; LESSON before it: the hands-on tutorial. */
+constexpr float kHelpW = 20.f, kLessonW = 54.f;
 SDL_FRect       HelpButtonRect()
 {
     return SDL_FRect{float(kPanelW) - 16 - kHelpW, kTabY, kHelpW, kTabH};
+}
+SDL_FRect LessonButtonRect()
+{
+    return SDL_FRect{float(kPanelW) - 16 - kHelpW - 6 - kLessonW, kTabY, kLessonW, kTabH};
 }
 SDL_FRect SoundButtonRect()
 {
@@ -878,9 +883,9 @@ void DrawBar(Canvas& cv, const UiState& st)
     if(lvl > 0.f)
         cv.RoundRect(kMeterX + 2, kTabY + 6, (kMeterW - 4) * lvl, kTabH - 12, 2.f,
                      lvl > 0.95f ? SDL_Color{236, 72, 60, 255} : SDL_Color{96, 206, 120, 255});
-    const SDL_FRect   help = HelpButtonRect();
+    const SDL_FRect   help = HelpButtonRect(), lesson = LessonButtonRect();
     const std::string card = st.card_name.empty() ? "" : "card: " + st.card_name;
-    const float       cardX = help.x - 8 - float(TextWidth(card, 1)); // right-aligned before the ?
+    const float       cardX = lesson.x - 8 - float(TextWidth(card, 1)); // right-aligned before LESSON and the ?
     if(loaded)
     {
         std::string name = st.input.name.size() > 14 ? st.input.name.substr(0, 12) + ".." : st.input.name;
@@ -890,6 +895,7 @@ void DrawBar(Canvas& cv, const UiState& st)
     }
     if(!card.empty())
         cv.Text(cardX, kTabY + 5, 1, kHintColor, card);
+    DrawBarButton(cv, lesson, "LESSON", st.lesson_step >= 0, true, st.hover == Hit{HitKind::LessonButton, 0}, accent);
     DrawBarButton(cv, help, "?", st.tour_step >= 0, true, st.hover == Hit{HitKind::HelpButton, 0}, accent);
 }
 
@@ -1136,10 +1142,23 @@ std::vector<std::string> Wrap(const char* text, int chars)
     return lines;
 }
 
+/** What a note shows: a tour step, or a lesson step with a line of progress under its body. */
+struct NoteSpec
+{
+    TourTarget  target;
+    const char* title = nullptr;
+    const char* body  = nullptr;
+    const char* keys  = nullptr;
+    std::string status; /**< the lesson's progress line, or empty */
+    int         index = 0, count = 0;
+};
+
 /** Where the note of the current step and its buttons go. */
 struct NoteLayout
 {
     const TourStep*          step = nullptr;
+    NoteSpec                 spec;
+    bool                     ok = false;
     int                      index = 0, count = 0;
     SDL_FRect                box{0, 0, 0, 0}, back{0, 0, 0, 0}, next{0, 0, 0, 0}, close{0, 0, 0, 0};
     SDL_FRect                target{0, 0, 0, 0};
@@ -1147,21 +1166,20 @@ struct NoteLayout
     std::vector<std::string> body, keys;
 };
 
-NoteLayout LayoutNote(const UiState& st)
+NoteLayout LayoutSpec(const NoteSpec& spec)
 {
     NoteLayout L;
-    const Tour tour = TourFor(st.firmware);
-    if(st.tour_step < 0 || tour.count == 0)
-        return L;
-    L.index = std::clamp(st.tour_step, 0, tour.count - 1);
-    L.count = tour.count;
-    L.step  = &tour.steps[L.index];
+    L.spec  = spec;
+    L.ok    = true;
+    L.index = spec.index;
+    L.count = spec.count;
     const int chars = int((kNoteW - 2 * kNotePad) / float(kGlyphAdv));
-    L.body          = Wrap(L.step->body, chars);
-    L.keys          = Wrap(L.step->keys, chars);
+    L.body          = Wrap(spec.body, chars);
+    L.keys          = Wrap(spec.keys, chars);
     const float h = kNotePad + kNoteTitleH + 6 + L.body.size() * kNoteLineH
-                    + (L.keys.empty() ? 0.f : 4 + L.keys.size() * kNoteLineH) + 10 + kTabH + kNotePad;
-    L.target = TargetRect(L.step->target);
+                    + (L.keys.empty() ? 0.f : 4 + L.keys.size() * kNoteLineH)
+                    + (spec.status.empty() ? 0.f : 4 + kNoteLineH) + 10 + kTabH + kNotePad;
+    L.target = TargetRect(spec.target);
     float x, y;
     if(L.target.w > 0)
     {
@@ -1185,27 +1203,48 @@ NoteLayout LayoutNote(const UiState& st)
     return L;
 }
 
-void DrawTour(Canvas& cv, const UiState& st)
+NoteLayout LayoutNote(const UiState& st)
 {
-    const NoteLayout L = LayoutNote(st);
-    if(!L.step)
-        return;
-    const FirmwareInfo& fw     = FirmwareByName(st.firmware);
-    const SDL_Color     accent = fw.name[0] ? fw.accent : SDL_Color{118, 122, 138, 255};
-    cv.FillRect(0, kBarH, float(kPanelW), float(kPanelH) - kBarH, SDL_Color{0, 0, 0, kTourDim});
-    DrawTargetControls(cv, L.step->target, st);
-    if(L.target.w > 0)
-        DrawFrame(cv, L.target, accent);
+    const Tour tour = TourFor(st.firmware);
+    if(st.tour_step < 0 || tour.count == 0)
+        return NoteLayout{};
+    const int       index = std::clamp(st.tour_step, 0, tour.count - 1);
+    const TourStep& s     = tour.steps[index];
+    NoteLayout      L     = LayoutSpec(NoteSpec{s.target, s.title, s.body, s.keys, "", index, tour.count});
+    L.step                = &s;
+    return L;
+}
 
+NoteLayout LayoutLesson(const UiState& st)
+{
+    const Lesson lesson = LessonFor(st.firmware);
+    if(st.lesson_step < 0 || lesson.count == 0)
+        return NoteLayout{};
+    const int         index = std::clamp(st.lesson_step, 0, lesson.count - 1);
+    const LessonStep& s     = lesson.steps[index];
+    return LayoutSpec(NoteSpec{s.target, s.title, s.body, s.keys, st.lesson_progress, index, lesson.count});
+}
+
+/** The note itself: frame, title, counter, body, keys and the progress line; y of the button row comes back. */
+void DrawNoteBox(Canvas& cv, const NoteLayout& L, SDL_Color accent, const char* done)
+{
     const SDL_FRect& b = L.box;
     cv.RoundRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4, 8.f, accent);
     cv.RoundRect(b.x, b.y, b.w, b.h, 6.f, kNoteBg);
     float y = b.y + kNotePad;
-    if(float(TextWidth(L.step->title, 2)) <= b.w - 2 * kNotePad - 70) // room for the counter
-        cv.Text(b.x + kNotePad, y, 2, accent, L.step->title);
+    if(float(TextWidth(L.spec.title, 2)) <= b.w - 2 * kNotePad - 110) // room for the counter
+        cv.Text(b.x + kNotePad, y, 2, accent, L.spec.title);
     else
-        cv.Text(b.x + kNotePad, y + 4, 1, accent, L.step->title);
-    cv.Text(b.x + b.w - kNotePad, y + 4, 1, kNoteDim, std::to_string(L.index + 1) + " / " + std::to_string(L.count), 1);
+        cv.Text(b.x + kNotePad, y + 4, 1, accent, L.spec.title);
+    const std::string counter = std::to_string(L.index + 1) + " / " + std::to_string(L.count);
+    cv.Text(b.x + b.w - kNotePad, y + 4, 1, kNoteDim, counter, 1);
+    if(done)
+    {
+        const float w = float(TextWidth(done, 1)) + 10;
+        const float x = b.x + b.w - kNotePad - float(TextWidth(counter, 1)) - 8 - w;
+        cv.RoundRect(x, y + 1, w, 14, 3.f, accent);
+        cv.Text(x + 5, y + 4, 1, kNoteBg, done);
+    }
     y += kNoteTitleH + 6;
     for(const std::string& line : L.body)
     {
@@ -1221,6 +1260,27 @@ void DrawTour(Canvas& cv, const UiState& st)
             y += kNoteLineH;
         }
     }
+    if(!L.spec.status.empty())
+    {
+        y += 4;
+        cv.Text(b.x + kNotePad, y, 1, accent, L.spec.status);
+    }
+}
+
+void DrawTour(Canvas& cv, const UiState& st)
+{
+    const NoteLayout L = LayoutNote(st);
+    if(!L.step)
+        return;
+    const FirmwareInfo& fw     = FirmwareByName(st.firmware);
+    const SDL_Color     accent = fw.name[0] ? fw.accent : SDL_Color{118, 122, 138, 255};
+    cv.FillRect(0, kBarH, float(kPanelW), float(kPanelH) - kBarH, SDL_Color{0, 0, 0, kTourDim});
+    DrawTargetControls(cv, L.spec.target, st);
+    if(L.target.w > 0)
+        DrawFrame(cv, L.target, accent);
+
+    const SDL_FRect& b = L.box;
+    DrawNoteBox(cv, L, accent, nullptr);
     const bool last = L.index + 1 >= L.count;
     DrawBarButton(cv, L.back, "< BACK", false, L.index > 0, st.hover == Hit{HitKind::TourBack, 0}, accent);
     DrawBarButton(cv, L.next, last ? "DONE" : "NEXT >", true, true, false, accent);
@@ -1237,6 +1297,58 @@ void DrawTour(Canvas& cv, const UiState& st)
         else
             cv.Arrow(ax, b.y + b.h + 3, tx, L.target.y - kFramePad - 4, accent);
     }
+}
+
+/** The lesson (lesson.h): a lighter shade than the tour's, since the instrument is played through
+ *  it, the step's control framed, and the note with SKIP and END instead of NEXT. */
+constexpr uint8_t kLessonDim = 70;
+void              DrawLesson(Canvas& cv, const UiState& st)
+{
+    const NoteLayout L = LayoutLesson(st);
+    if(!L.ok)
+        return;
+    const FirmwareInfo& fw     = FirmwareByName(st.firmware);
+    const SDL_Color     accent = fw.name[0] ? fw.accent : SDL_Color{118, 122, 138, 255};
+    cv.FillRect(0, kBarH, float(kPanelW), float(kPanelH) - kBarH, SDL_Color{0, 0, 0, kLessonDim});
+    DrawTargetControls(cv, L.spec.target, st);
+    if(L.target.w > 0)
+        DrawFrame(cv, L.target, accent);
+    const SDL_FRect& b = L.box;
+    DrawNoteBox(cv, L, accent, st.lesson_ticked ? "DONE" : nullptr);
+    const bool last = L.index + 1 >= L.count;
+    DrawBarButton(cv, L.back, "< BACK", false, L.index > 0, st.hover == Hit{HitKind::LessonBack, 0}, accent);
+    DrawBarButton(cv, L.next, last ? "DONE" : "SKIP >", st.lesson_ticked, true, st.hover == Hit{HitKind::LessonNext, 0}, accent);
+    if(!last)
+        DrawBarButton(cv, L.close, "END", false, true, st.hover == Hit{HitKind::LessonClose, 0}, accent);
+    cv.Text(L.next.x + L.next.w + 10, L.next.y + 5, 1, kNoteDim, "PgDn = skip   PgUp = back   ESC = end");
+    if(L.target.w > 0)
+    {
+        const float tx = L.target.x + L.target.w / 2;
+        const float ax = std::clamp(tx, b.x + 24, b.x + b.w - 24);
+        if(L.below)
+            cv.Arrow(ax, b.y - 3, tx, L.target.y + L.target.h + kFramePad + 4, accent);
+        else
+            cv.Arrow(ax, b.y + b.h + 3, tx, L.target.y - kFramePad - 4, accent);
+    }
+}
+
+/** While a lesson is up its note's buttons take the clicks on them; everything else reaches the instrument. */
+bool LessonHit(const UiState& st, float x, float y, Hit& out)
+{
+    const NoteLayout L = LayoutLesson(st);
+    if(!L.ok)
+        return false;
+    if(L.index > 0 && Contains(L.back, x, y))
+        out = Hit{HitKind::LessonBack, 0};
+    else if(Contains(L.next, x, y))
+        out = Hit{HitKind::LessonNext, 0};
+    else if(L.index + 1 < L.count && Contains(L.close, x, y))
+        out = Hit{HitKind::LessonClose, 0};
+    else if(Contains(L.box, x, y))
+        out = Hit{}; // the note itself swallows the click
+    else
+        return false;
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1307,12 +1419,16 @@ void Panel::Draw(const UiState& st)
     DrawSoundMenu(cv, st);
     DrawBootBanner(cv, st);
     DrawTour(cv, st);
+    DrawLesson(cv, st);
 }
 
 Hit Panel::HitTest(const UiState& st, float x, float y) const
 {
     if(st.tour_step >= 0)
         return TourHit(st, x, y);
+    Hit lesson_hit;
+    if(st.lesson_step >= 0 && LessonHit(st, x, y, lesson_hit))
+        return lesson_hit;
     if(st.sound_menu && HasSoundMenu(st))
         for(int i = 0; i < int(st.sounds.size()); i++)
             if(Contains(SoundRowRect(i), x, y))
@@ -1326,6 +1442,8 @@ Hit Panel::HitTest(const UiState& st, float x, float y) const
             return Hit{HitKind::SoundButton, 0};
         if(Contains(HelpButtonRect(), x, y))
             return Hit{HitKind::HelpButton, 0};
+        if(Contains(LessonButtonRect(), x, y))
+            return Hit{HitKind::LessonButton, 0};
         for(int i = 0; i < 4; i++)
             if(Contains(InputButtonRect(i), x, y))
                 return Hit{HitKind::InputButton, i};

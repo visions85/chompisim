@@ -15,6 +15,7 @@
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <string>
 #ifdef _WIN32
@@ -35,6 +36,7 @@
 #include "firmware_select.h"
 #include "panel.h"
 #include "tour.h"
+#include "lesson.h"
 
 #ifndef CHOMPI_SIM_FIRMWARE
 #define CHOMPI_SIM_FIRMWARE ""
@@ -66,6 +68,7 @@ struct Options
     std::string cards;              /**< folder of card folders, one per firmware (for switching) */
     bool        tour    = false;    /**< show the guided tour at start */
     bool        no_tour = false;    /**< never show it by itself */
+    bool        lesson  = false;    /**< start the hands-on lesson at start */
     bool        booted  = false;    /**< the boot window already chose this firmware (set when it relaunches) */
     double      boot_window = 3.0;  /**< seconds a shared card waits for a key (the bootloader's own window is 2 s) */
     std::string argv0;
@@ -98,6 +101,7 @@ void PrintUsage(const char* argv0)
                 "  --tour                show the guided tour of the panel at start (it shows by itself the first\n"
                 "                        time a firmware runs; the ? in the bar shows it any time)\n"
                 "  --no-tour             never show the tour by itself\n"
+                "  --lesson              start the hands-on lesson at start (LESSON in the bar or F11 any time)\n"
                 "  --booted              skip the boot window of a card that holds several firmwares (the\n"
                 "                        window passes this when it relaunches into the chosen one)\n"
                 "  --boot-window <sec>   how long that window waits for a key (default 3)\n"
@@ -155,6 +159,8 @@ int ParseArgs(int argc, char** argv, Options& o)
             o.tour = true;
         else if(a == "--no-tour")
             o.no_tour = true;
+        else if(a == "--lesson")
+            o.lesson = true;
         else if(a == "--booted")
             o.booted = true;
         else if(a == "--boot-window")
@@ -291,25 +297,32 @@ bool IsSmallKnob(int enc)
 class Input
 {
   public:
+    /** Called when a control's combined state changes (the lesson watches these). */
+    std::function<void(int, bool)> on_button, on_encoder;
+
     void KeyboardButton(int b, bool down)
     {
-        kb_btn_[b] = down;
-        Sim::Get().SetButton(b, kb_btn_[b] || mouse_btn_[b]);
+        const bool was = kb_btn_[b] || mouse_btn_[b];
+        kb_btn_[b]     = down;
+        ApplyButton(b, was);
     }
     void MouseButton(int b, bool down)
     {
-        mouse_btn_[b] = down;
-        Sim::Get().SetButton(b, kb_btn_[b] || mouse_btn_[b]);
+        const bool was = kb_btn_[b] || mouse_btn_[b];
+        mouse_btn_[b]  = down;
+        ApplyButton(b, was);
     }
     void KeyboardEncoder(int e, bool down)
     {
-        kb_enc_[e] = down;
-        Sim::Get().SetEncoderPressed(e, EncoderPressed(e));
+        const bool was = EncoderPressed(e);
+        kb_enc_[e]     = down;
+        ApplyEncoder(e, was);
     }
     void MouseEncoder(int e, bool down)
     {
-        mouse_enc_[e] = down;
-        Sim::Get().SetEncoderPressed(e, EncoderPressed(e));
+        const bool was = EncoderPressed(e);
+        mouse_enc_[e]  = down;
+        ApplyEncoder(e, was);
     }
     bool EncoderPressed(int e) const { return kb_enc_[e] || mouse_enc_[e]; }
     /** Lets go of everything the keyboard holds (used when the window loses focus). */
@@ -324,6 +337,20 @@ class Input
     }
 
   private:
+    void ApplyButton(int b, bool was)
+    {
+        const bool now = kb_btn_[b] || mouse_btn_[b];
+        Sim::Get().SetButton(b, now);
+        if(now != was && on_button)
+            on_button(b, now);
+    }
+    void ApplyEncoder(int e, bool was)
+    {
+        const bool now = EncoderPressed(e);
+        Sim::Get().SetEncoderPressed(e, now);
+        if(now != was && on_encoder)
+            on_encoder(e, now);
+    }
     bool kb_btn_[NUM_BUTTONS]    = {};
     bool mouse_btn_[NUM_BUTTONS] = {};
     bool kb_enc_[kNumEncoders]    = {};
@@ -591,6 +618,11 @@ class App
 
     int Run()
     {
+        button_down_s_.fill(-1.0);
+        for(int b : kPianoKeys)
+            is_piano_[size_t(b)] = true;
+        input_.on_button  = [this](int b, bool down) { OnButton(b, down); };
+        input_.on_encoder = [this](int e, bool down) { OnEncoder(e, down); };
         if(!InitSim())
             return 1;
         if(!InitVideo())
@@ -598,6 +630,8 @@ class App
         InitAudio();
         if(boot_phase_)
             BeginBoot();
+        else if(opt_.lesson)
+            StartLesson();
         else
             MaybeStartTour();
         Loop();
@@ -1015,6 +1049,11 @@ class App
             return;
         Sim::Get().TurnEncoder(enc, detents);
         ui_.knob_angle[size_t(enc)] += detents * kDegreesPerDetent;
+        if(LessonCounts())
+        {
+            lesson_turn_[size_t(enc)] += detents;
+            lesson_turn_abs_[size_t(enc)] += std::abs(detents);
+        }
         if(IsSmallKnob(enc))
             last_small_knob_ = enc;
     }
@@ -1060,6 +1099,7 @@ class App
 
     void StartTour()
     {
+        EndLesson();
         ui_.tour_step  = 0;
         ui_.sound_menu = false;
         Debug("tour start");
@@ -1087,6 +1127,164 @@ class App
         {
             ui_.tour_step = std::max(0, s);
             Debug("tour step %d", ui_.tour_step);
+        }
+    }
+
+    // ---- the hands-on lesson (lesson.h): LESSON in the bar or F11; each step ticks itself off ----
+    static constexpr double kLessonTickS = 0.8; /**< the tick shows this long before the next step */
+
+    const gui::LessonStep* LessonStepNow() const
+    {
+        const gui::Lesson l = gui::LessonFor(ui_.firmware);
+        if(ui_.lesson_step < 0 || ui_.lesson_step >= l.count)
+            return nullptr;
+        return &l.steps[ui_.lesson_step];
+    }
+
+    void LessonBeginStep()
+    {
+        ui_.lesson_ticked = false;
+        ui_.lesson_progress.clear();
+        lesson_ticked_at_ = -1;
+        lesson_pressed_   = false;
+        lesson_turn_.fill(0);
+        lesson_turn_abs_.fill(0);
+        lesson_push_.fill(0);
+        lesson_key_seen_.fill(false);
+        lesson_keys_ = 0;
+    }
+
+    void StartLesson()
+    {
+        EndTour();
+        ui_.sound_menu  = false;
+        ui_.lesson_step = 0;
+        LessonBeginStep();
+        Debug("lesson start");
+    }
+
+    void EndLesson()
+    {
+        if(ui_.lesson_step < 0)
+            return;
+        ui_.lesson_step   = -1;
+        ui_.lesson_ticked = false;
+        ui_.lesson_progress.clear();
+        Debug("lesson end");
+    }
+
+    /** One step on (+1) or back (-1); going past the last step ends the lesson. */
+    void LessonMove(int d)
+    {
+        if(ui_.lesson_step < 0)
+            return;
+        const int n = gui::LessonFor(ui_.firmware).count;
+        const int s = ui_.lesson_step + d;
+        if(s >= n)
+        {
+            EndLesson();
+            return;
+        }
+        ui_.lesson_step = std::max(0, s);
+        LessonBeginStep();
+        Debug("lesson step %d", ui_.lesson_step);
+    }
+
+    /** Whether the instrument is where a step wants it. */
+    bool LessonWhere(gui::LessonCheck::Where w) const
+    {
+        const bool down   = Sim::Get().ToggleDown();
+        const bool chompi = Sim::Get().ButtonPressed(KEY_CHOMPI);
+        switch(w)
+        {
+            case gui::LessonCheck::SwitchIsDown: return down;
+            case gui::LessonCheck::Menu: return down && chompi;
+            case gui::LessonCheck::SwitchIsUp: return !down;
+            case gui::LessonCheck::ChompiUp: return !down && chompi;
+            default: return true;
+        }
+    }
+
+    /** An action counts for the step while it waits and the instrument is where the step wants it. */
+    bool LessonCounts() const
+    {
+        const gui::LessonStep* s = LessonStepNow();
+        return s && !ui_.lesson_ticked && LessonWhere(s->check.where);
+    }
+
+    void OnButton(int b, bool down)
+    {
+        if(b < 0 || b >= NUM_BUTTONS)
+            return;
+        button_down_s_[size_t(b)] = down ? now_s_ : -1.0;
+        if(!down || !LessonCounts())
+            return;
+        const gui::LessonStep* s = LessonStepNow();
+        if(s->check.kind == gui::LessonCheck::Press && b == s->check.a)
+            lesson_pressed_ = true;
+        if(s->check.kind == gui::LessonCheck::Keys && is_piano_[size_t(b)] && !lesson_key_seen_[size_t(b)])
+        {
+            lesson_key_seen_[size_t(b)] = true;
+            lesson_keys_++;
+        }
+    }
+
+    void OnEncoder(int e, bool down)
+    {
+        if(e >= 0 && e < kNumEncoders && down && LessonCounts())
+            lesson_push_[size_t(e)]++;
+    }
+
+    /** Once a frame: ticks the step off when its action has happened, then moves on. */
+    void UpdateLesson()
+    {
+        const gui::LessonStep* s = LessonStepNow();
+        if(!s)
+            return;
+        if(ui_.lesson_ticked)
+        {
+            if(now_s_ - lesson_ticked_at_ >= kLessonTickS)
+                LessonMove(+1);
+            return;
+        }
+        using C                  = gui::LessonCheck;
+        const C&    c            = s->check;
+        bool        done         = false;
+        std::string progress;
+        auto        count_of = [&](int n, int of, const char* what) {
+            if(n > 0 && n < of)
+                progress = std::to_string(n) + " of " + std::to_string(of) + " " + what;
+            return n >= of;
+        };
+        switch(c.kind)
+        {
+            case C::Click: break;
+            case C::SwitchDown: done = Sim::Get().ToggleDown(); break;
+            case C::SwitchUp: done = !Sim::Get().ToggleDown(); break;
+            case C::Press: done = lesson_pressed_; break;
+            case C::Hold:
+            {
+                const double t = c.a >= 0 && c.a < NUM_BUTTONS ? button_down_s_[size_t(c.a)] : -1.0;
+                done           = t >= 0 && now_s_ - t >= c.b / 1000.0 && LessonWhere(c.where);
+                break;
+            }
+            case C::Turn:
+            {
+                const int n = lesson_turn_[size_t(c.a)];
+                done        = c.b > 0 ? count_of(n, c.b, "detents") : count_of(-n, -c.b, "detents");
+                break;
+            }
+            case C::TurnAny: done = count_of(lesson_turn_abs_[size_t(c.a)], c.b, "detents"); break;
+            case C::Push: done = count_of(lesson_push_[size_t(c.a)], c.b, "presses"); break;
+            case C::Keys: done = count_of(lesson_keys_, c.a, "keys"); break;
+        }
+        ui_.lesson_progress = progress;
+        if(done)
+        {
+            ui_.lesson_ticked   = true;
+            ui_.lesson_progress = "done";
+            lesson_ticked_at_   = now_s_;
+            Debug("lesson done step %d", ui_.lesson_step);
         }
     }
 
@@ -1141,6 +1339,15 @@ class App
             case gui::HitKind::SoundButton: ui_.sound_menu = !ui_.sound_menu; break;
             case gui::HitKind::SoundRow: SelectSound(h.index); break;
             case gui::HitKind::HelpButton: StartTour(); break;
+            case gui::HitKind::LessonButton:
+                if(ui_.lesson_step >= 0)
+                    EndLesson();
+                else
+                    StartLesson();
+                break;
+            case gui::HitKind::LessonBack: LessonMove(-1); break;
+            case gui::HitKind::LessonNext: LessonMove(+1); break;
+            case gui::HitKind::LessonClose: EndLesson(); break;
             case gui::HitKind::TourNext:
             case gui::HitKind::TourBack:
             case gui::HitKind::TourClose:
@@ -1208,6 +1415,29 @@ class App
                 for(int i = 0; i < 4; i++)
                     if(e.keysym.scancode == kBootKeys[i])
                         ChooseBoot(i);
+            return;
+        }
+        if(k == SDLK_F11)
+        {
+            if(down && !e.repeat)
+            {
+                if(ui_.lesson_step >= 0)
+                    EndLesson();
+                else
+                    StartLesson();
+            }
+            return;
+        }
+        if(ui_.lesson_step >= 0 && (k == SDLK_PAGEDOWN || k == SDLK_PAGEUP || k == SDLK_ESCAPE))
+        {
+            // the lesson takes these; everything else plays the instrument, as the lesson asks
+            if(down && !e.repeat)
+            {
+                if(k == SDLK_ESCAPE)
+                    EndLesson();
+                else
+                    LessonMove(k == SDLK_PAGEDOWN ? +1 : -1);
+            }
             return;
         }
         if(ui_.tour_step >= 0
@@ -1461,6 +1691,7 @@ class App
             last_s_ = elapsed;
 
             UpdateStatus();
+            UpdateLesson();
             panel_->Draw(ui_);
 
             bool lastFrame = opt_.exit_after >= 0 && elapsed >= opt_.exit_after;
@@ -1520,6 +1751,12 @@ class App
     int                         held_push_enc_   = -1;
     float                       wheel_accum_[kNumEncoders] = {};
     double                      now_s_           = 0;
+    double                      lesson_ticked_at_ = -1;
+    bool                        lesson_pressed_  = false;
+    std::array<int, kNumEncoders>   lesson_turn_{}, lesson_turn_abs_{}, lesson_push_{};
+    std::array<bool, NUM_BUTTONS>   lesson_key_seen_{}, is_piano_{};
+    int                         lesson_keys_     = 0;
+    std::array<double, NUM_BUTTONS> button_down_s_{}; /**< when each control went down, -1 while up */
     double                      push_release_at_ = 0;
     int                         push_enc_        = -1;
     std::vector<std::string>    on_card_;             /**< firmwares the card holds (DetectFirmwares) */

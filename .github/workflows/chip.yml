@@ -1,0 +1,49 @@
+# Builds the DRONE firmware for the instrument (an SRAM app for CHOMPI's
+# bootloader, STM32H750 on the Daisy Seed) with the GNU Arm Embedded toolchain
+# and the vendored libDaisy and DaisySP of the CHOMPI checkout, fails if it no
+# longer fits the chip's memory, writes the memory use to the run's summary, and
+# publishes the binary as the "chompi-drone-chip" artifact of the run.
+name: chip
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the GNU Arm Embedded toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+      - name: Fetch the CHOMPI sources (WAVE's folder, for the vendored libraries)
+        run: scripts/fetch-firmware.sh wave
+      - name: Build DRONE for the instrument
+        run: scripts/build-chip.sh 2>&1 | tee build-chip.log
+      - name: Memory use, to the run's summary
+        run: |
+          {
+            echo '## DRONE on the chip'
+            echo '```'
+            grep -E "Memory region|FLASH:|RAM:|SRAM|SDRAM:|QSPIFLASH:" build-chip.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Package
+        run: |
+          mkdir -p dist/chompi-drone-chip
+          cp firmware/drone/code/src/build/CHOMPI.bin dist/chompi-drone-chip/CHOMPI_DRONE_V0_1.bin
+          cp firmware/drone/code/src/build/CHOMPI.map dist/chompi-drone-chip/CHOMPI_DRONE_V0_1.map
+          grep -E "Memory region|FLASH:|RAM:|SRAM|SDRAM:|QSPIFLASH:" build-chip.log > dist/chompi-drone-chip/memory.txt
+          cat > dist/chompi-drone-chip/RUN-ME.txt <<'TXT'
+          DRONE for the CHOMPI instrument (untested on a device so far: see the README).
+
+          CHOMPI_DRONE_V0_1.bin is an app for CHOMPI's own bootloader: copy it to the root of a
+          card made with scripts/make-drone-card.py (the sounds and the marker file), as the only
+          .bin there, and power the instrument on with the card in. memory.txt is what the linker
+          reported; the .map file says where everything landed.
+          TXT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chompi-drone-chip
+          path: dist/chompi-drone-chip

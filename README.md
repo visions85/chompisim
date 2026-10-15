@@ -164,6 +164,18 @@ firmwares' tours were seen is kept in SDL's per-user folder
 `~/.local/share/chompi-sim/tour-seen` on Linux); `--tour` shows the tour
 at start regardless and `--no-tour` never shows it by itself.
 
+The tour tells; the lesson has you do it. LESSON in the bar (or `F11`,
+or `--lesson` at start) opens a hands-on tutorial: a note asks for one
+thing at a time, frames the control it means, and ticks itself off when the
+front-end sees it done, from the keys, the knobs, the switch and the
+function keys, then moves on. The instrument plays throughout, so what
+the lesson asks for is heard. On DRONE it builds a drone from nothing in
+eighteen steps: the menu and latch, a slow attack and release, a chord,
+drift, detune, reverb and shimmer, the looper, a pass taken back, and
+resampling. The other firmwares get first steps on the instrument: keys,
+a knob's pages, the menu. `docs/gui-lesson.png` shows a step. Page Down
+skips a step, Page Up goes back, Escape ends the lesson.
+
 | Control | Computer |
 |---|---|
 | White keys (lower row of caps), C D E F G A B C D E F | `a s d f g h j k l ; '` |
@@ -178,6 +190,7 @@ at start regardless and `--no-tour` never shows it by itself.
 | Push encoders SW1 to SW6 | F1 to F6 |
 | Key map overlay | `/` (toggle; `--no-keymap` starts without it) |
 | Guided tour | `?` in the bar; right and left arrows step through it, Escape leaves |
+| Lesson | LESSON in the bar or `F11`; it moves on by itself as you do each step, Page Down skips one, Page Up goes back, Escape ends it |
 | Boot window (a shared card) | hold `a` `s` `d` or `f`, or click one of the first white caps, while the LEDs fade |
 | Sound menu (DRONE) | click SOUND in the bar, then a row; Escape or a click elsewhere closes it |
 | Quit | Escape |
@@ -244,7 +257,8 @@ was rendered this way from `examples/demo.txt` (normalised afterwards).
 a C major chord, `docs/gui-tape.png` the plain panel with TAPE holding the same
 chord, `docs/gui-drone.png` DRONE with its playheads on the keys and its sound
 menu open, `docs/gui-tour.png` a step of the guided tour on TAPE,
-`docs/gui-boot.png` the boot window of a shared card, and
+`docs/gui-boot.png` the boot window of a shared card, `docs/gui-lesson.png` a step
+of the lesson on DRONE, and
 `docs/gui-stub.png` the stand-in core used to develop the front-end.
 
 ## Sampling: sounds into the inputs
@@ -440,10 +454,13 @@ sounds over MIDI.
 For the instrument, `scripts/build-chip.sh` builds `firmware/drone/code/src`
 the way WAVE is built: an SRAM app for CHOMPI's bootloader, with the GNU Arm
 Embedded toolchain and the vendored libDaisy and DaisySP of the checkout.
-It fits: with GCC 13.2 the code takes 214.5 KB of the 232 KB code region
+It fits: with GCC 13.2 the code takes 214.8 KB of the 232 KB code region
 (WAVE built the same way takes 204.8 KB), the data 186 KB of 280 KB, and
-the SDRAM 61 MB of 64 MB (the sounds, the minute of recording, the loop and
-its undo copy, and the delay). It has not been run on a device yet, so treat it as a
+the SDRAM 60.4 MB of 64 MB (the sounds, the minute of recording, the loop
+and its undo copy, and the delay). Every push to `main` builds it too (the
+`chip` workflow): the run fails if it stops fitting, its summary shows the
+memory use, and the `chompi-drone-chip` artifact holds the binary, named
+for a card, with the linker's map. It has not been run on a device yet, so treat it as a
 desktop-tested build and watch the CPU load with dense clouds: every grain
 reads the SDRAM, and a long sound keeps its grain positions as whole frames
 plus a fraction so it stays in tune to its end.

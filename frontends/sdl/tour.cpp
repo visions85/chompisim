@@ -59,8 +59,9 @@ constexpr const char* kTabsBody = "These reboot the simulator into another firmw
 constexpr const char* kLedsBody =
     "The LED above each knob shows which page it is on and where the control sits, in the colours the guides "
     "describe; the two small LEDs by the transport knob belong to it. Every LED here is read from the firmware.";
-constexpr const char* kEndBody = "Press ? in the bar to see this tour again. / shows the key map, with every "
-                                 "computer key drawn on the control it works, and the lines at the bottom list them.";
+constexpr const char* kEndBody = "Press ? in the bar to see this tour again, and LESSON (or F11) for a hands-on lesson "
+                                 "that has you play. / shows the key map, with every computer key drawn on the control "
+                                 "it works, and the lines at the bottom list them.";
 
 // ---------------------------------------------------------------------------
 // TAPE 2.0 (the TAPE Guidebook, levels 1 to 7)

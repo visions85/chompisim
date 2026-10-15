@@ -41,6 +41,10 @@ enum class HitKind
     TourNext,    /**< while the tour is up: its NEXT button, or anywhere else in the window */
     TourBack,    /**< the tour's BACK button */
     TourClose,   /**< the tour's SKIP / DONE button */
+    LessonButton, /**< LESSON in the bar: starts the hands-on tutorial (lesson.h) */
+    LessonBack,   /**< the lesson note's BACK button */
+    LessonNext,   /**< its SKIP (next step) button */
+    LessonClose,  /**< its END button */
 };
 
 struct Hit
@@ -77,6 +81,9 @@ struct UiState
     int                                          sound = -1;      /**< the selected one, as the firmware reports it; -1 = not yet */
     bool                                         sound_menu = false; /**< the sound menu is dropped down */
     int                                          tour_step = -1;  /**< step of the guided tour being shown, -1 = none (see tour.h) */
+    int                                          lesson_step = -1; /**< step of the lesson being done, -1 = none (see lesson.h) */
+    bool                                         lesson_ticked = false; /**< the lesson's step was just done; it moves on in a moment */
+    std::string                                  lesson_progress; /**< how far the step is ("2 of 3 keys"), or empty */
     bool                                         boot_window = false; /**< the simulated bootloader is waiting for a key to pick the firmware */
     chompi_sim::Rgb                              boot_led{};      /**< every LED shows this while the boot window is up */
     std::array<std::string, 4>                   boot_slots{};    /**< firmware names on the first four white caps ("" = none) */
