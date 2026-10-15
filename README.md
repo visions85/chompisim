@@ -423,7 +423,10 @@ already holds, and plays it back with the live sound; the third page of the
 VOLUME knob sets how long the layers last, from a few passes at the left to
 for ever at the right, and the loop saturates gently like tape instead of
 clipping. Its LED is amber, flashing at the top of each pass, and switching
-it off fades the loop out over a second. Over MIDI the new pages are CC 34
+it off fades the loop out over a second. Held for half a second, PLAY takes
+the last pass back instead: every point of the loop returns to what it held
+before it was last written over, so the last loop-length of playing is gone
+(the LED flashes white); held again right after, it brings the pass back. Over MIDI the new pages are CC 34
 (detune), 35 (harmonics), 36 (shimmer) and 37 (looper decay), and presets
 keep them (fields 18 to 21; files saved before still load).
 `examples/drone-chord.txt` latches a chord with a slow fade-in, drift and
@@ -439,8 +442,8 @@ the way WAVE is built: an SRAM app for CHOMPI's bootloader, with the GNU Arm
 Embedded toolchain and the vendored libDaisy and DaisySP of the checkout.
 It fits: with GCC 13.2 the code takes 214.5 KB of the 232 KB code region
 (WAVE built the same way takes 204.8 KB), the data 186 KB of 280 KB, and
-the SDRAM 49 MB of 64 MB (the sounds, the minute of recording, the loop and
-the delay). It has not been run on a device yet, so treat it as a
+the SDRAM 61 MB of 64 MB (the sounds, the minute of recording, the loop and
+its undo copy, and the delay). It has not been run on a device yet, so treat it as a
 desktop-tested build and watch the CPU load with dense clouds: every grain
 reads the SDRAM, and a long sound keeps its grain positions as whole frames
 plus a fraction so it stays in tune to its end.

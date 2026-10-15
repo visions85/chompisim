@@ -56,8 +56,9 @@ chompi::InterpolatedDelayLine::AudioSample DSY_SDRAM_BSS del_mem[kMaxDelayTime];
 
 /** The sounds: fourteen slots of ten seconds and a minute for the recording, stereo int16, 38.4 MB of SDRAM. */
 int16_t DSY_SDRAM_BSS sampleMemory[grain::kBankSamples];
-/** The sound-on-sound loop (up to a minute of stereo int16) and the shimmer's window. */
+/** The sound-on-sound loop (up to a minute of stereo int16), its undo copy, and the shimmer's window. */
 int16_t DSY_SDRAM_BSS loopMemory[grain::kLoopSamples];
+int16_t DSY_SDRAM_BSS loopUndoMemory[grain::kLoopSamples];
 float DSY_SDRAM_BSS shimmerMemory[chompi::OctaveShifter::kSize];
 
 daisysp::Oscillator osc;
@@ -400,7 +401,7 @@ int main(void)
     // meter.Init(hw.seed.AudioSampleRate(), hw.seed.AudioBlockSize());
 
     engine.Init(hw.seed.AudioSampleRate(), &del_mem[0], &reverb, &soundBank, &sampleLoader,
-                &loopMemory[0], &shimmerMemory[0]);
+                &loopMemory[0], &loopUndoMemory[0], &shimmerMemory[0]);
     
     osc.Init(hw.seed.AudioSampleRate());
     osc.SetAmp(.2f);

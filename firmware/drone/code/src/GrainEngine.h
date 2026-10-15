@@ -696,10 +696,11 @@ class myEngine {
 
     void Init(float sample_rate, InterpolatedDelayLine::AudioSample* del, daisysp::Reverb* reverb,
               grain::SoundBank* bank, grain::SampleLoader* loader,
-              int16_t* loop_mem, float* shimmer_mem) {
+              int16_t* loop_mem, int16_t* loop_undo_mem, float* shimmer_mem) {
         sr_ = sample_rate;
         windows_.Init();
         loop_mem_ = loop_mem;
+        loop_undo_mem_ = loop_undo_mem;
         shifter_.Init(shimmer_mem);
         bank_ = bank;
         loader_ = loader;
@@ -944,7 +945,10 @@ class myEngine {
             const float  ll = loop_first_pass_ ? 0.f : s162f(loop_mem_[p]) * loop_fade_;
             const float  lr = loop_first_pass_ ? 0.f : s162f(loop_mem_[p + 1]) * loop_fade_;
             if (loop_on_) {
+                // what was there goes to the undo buffer first (silence on the first pass), then
                 // tape: the live signal goes in on top of the decayed loop, gently saturated
+                loop_undo_mem_[p]     = loop_first_pass_ ? int16_t(0) : loop_mem_[p];
+                loop_undo_mem_[p + 1] = loop_first_pass_ ? int16_t(0) : loop_mem_[p + 1];
                 loop_mem_[p]     = int16_t(f2s16(daisysp::SoftClip(outl[i] + ll * loop_decay_)));
                 loop_mem_[p + 1] = int16_t(f2s16(daisysp::SoftClip(outr[i] + lr * loop_decay_)));
             }
@@ -987,6 +991,16 @@ class myEngine {
         }
     }
     bool getLooper() const { return loop_on_; }
+    /** Takes back the last loop-length of playing: every point of the loop goes back to
+     *  what it held before it was last written over. The buffers swap, so a second undo
+     *  right after brings it back; later, the swapped-out copy is written over as the
+     *  loop records on. Nothing to take back on the first pass. */
+    bool looperUndo() {
+        if (!loop_on_ || loop_first_pass_ || !loop_undo_mem_)
+            return false;
+        std::swap(loop_mem_, loop_undo_mem_);
+        return true;
+    }
     float looperSeconds() const { return float(loop_frames_) / sr_; }
     /** 0..1: where the loop is in its pass. */
     float looperPhase() const { return loop_frames_ ? float(loop_pos_) / float(loop_frames_) : 0.f; }
@@ -1383,6 +1397,7 @@ class myEngine {
     chompi::OctaveShifter shifter_;
     float shimmer_ = 0.f, shimmer_target_ = 0.f, shimmer_lp_ = 0.f, shimmer_hp_ = 0.f;
     int16_t* loop_mem_ = nullptr;
+    int16_t* loop_undo_mem_ = nullptr;
     uint32_t loop_frames_ = 0, loop_pos_ = 0;
     bool loop_on_ = false, loop_first_pass_ = true;
     float loop_fade_ = 0.f, loop_decay_ = .79f, loop_decay_target_ = .79f;

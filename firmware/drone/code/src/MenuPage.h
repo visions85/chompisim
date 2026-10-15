@@ -123,8 +123,18 @@ namespace chompi
                     SetPthLedFloat(6, dled[3], dled[4], dled[5]);
                 }
 
+                // PLAY held for half a second: the looper takes the last pass back (held again
+                // right after: brings it back); its LED flashes white to say so
+                if (play_held_ && !play_undo_done_ && now - play_down_t_ >= kUndoHoldMs)
+                {
+                    play_undo_done_ = true;
+                    if (engine_->looperUndo())
+                        undo_flash_t_ = now;
+                }
                 // the PLAY key's LED: amber while the looper runs (PLAY with CHOMPI held toggles it)
-                if (engine_->getLooper())
+                if (now - undo_flash_t_ < 300)
+                    SetPthLedFloat(7, 1.f, 1.f, 1.f);
+                else if (engine_->getLooper())
                     SetPthLedFloat(7, .8f, .36f, 0.f);
                 else
                     SetPthLedFloat(7, 0.f, 0.f, 0.f);
@@ -767,12 +777,24 @@ namespace chompi
                 break;
             }
 
-            case static_cast<uint16_t>(Hardware::SwId::KEY_27): // play, with CHOMPI held: the looper on / off
+            case static_cast<uint16_t>(Hardware::SwId::KEY_27): // play, with CHOMPI held: the looper
             {
-                if (!chompi_key_pressed)
+                if (!chompi_key_pressed && !play_held_)
                     return false; // the sequencer's play key as usual
-                if (rising) // a loop of sixteen beats at the tempo of the moment
-                    engine_->setLooper(!engine_->getLooper(), 3840.f / float(clock_manager_->getTempo()));
+                if (rising)
+                {
+                    play_held_      = true;
+                    play_down_t_    = System::GetNow();
+                    play_undo_done_ = false;
+                }
+                else
+                {
+                    // a short press switches the looper on or off (a loop of sixteen beats at the
+                    // tempo of the moment); held for half a second it took the last pass back instead
+                    if (play_held_ && !play_undo_done_)
+                        engine_->setLooper(!engine_->getLooper(), 3840.f / float(clock_manager_->getTempo()));
+                    play_held_ = false;
+                }
                 return true;
             }
 
@@ -1055,6 +1077,9 @@ namespace chompi
         bool dec_reset = false;
         bool vol_reset = false;
         bool tempo_reset = false;
+        static constexpr uint32_t kUndoHoldMs = 500;
+        bool play_held_ = false, play_undo_done_ = false;
+        uint32_t play_down_t_ = 0, undo_flash_t_ = 0;
 
         uint8_t selected_slot = kSlotNone;
         uint8_t ss_bank = kSlotNone;

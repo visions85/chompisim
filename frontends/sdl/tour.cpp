@@ -368,8 +368,10 @@ const TourStep kDrone[] = {
     {kPlay, "PLAY key: sequencer, or looper",
      "Switch UP: starts and stops the sequencer. Switch DOWN with CHOMPI held: the LOOPER on or off, a "
      "tape loop sixteen beats long that records what comes out of the effects on top of what it already "
-     "holds, the old layers fading as the LOOPER page sets. Its LED is amber and flashes at the top of each pass.",
-     "Space is the PLAY key. Tab, hold Left Shift, Space switches the looper."},
+     "holds, the old layers fading as the LOOPER page sets. Its LED is amber and flashes at the top of each "
+     "pass. Hold PLAY for half a second there and the looper takes back the last pass (the LED flashes "
+     "white); hold it again right after and the pass comes back.",
+     "Space is the PLAY key. Tab, hold Left Shift, Space switches the looper; hold Space to undo."},
     {kLoop, "LOOP key: sequence, or latch",
      "Switch UP: arms recording: every note you press is added as a step, up to 32. Hold LOOP to delete "
      "the last step; hold PLAY + LOOP to clear the sequence. Switch DOWN with CHOMPI held: LATCH on or "
