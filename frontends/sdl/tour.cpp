@@ -325,9 +325,11 @@ const TourStep kDrone[] = {
      "white keys recall presets, black keys hold the deeper controls.",
      kToggleKeys},
     {kChompi, "CHOMPI key: record",
-     "Switch UP: hold it to record the inputs into the fifteenth sound and select it, so you can play what "
-     "you just sampled. Switch DOWN: SHIFT, and a rest while the sequencer records.",
-     "Left Shift holds it; feed it a sound with the INPUT buttons in the bar."},
+     "Switch UP: hold it to record the inputs into the fifteenth sound, up to a minute, and select it, so "
+     "you can play what you just sampled. Press PLAY while holding it and the instrument records what it "
+     "plays instead (resampling, the LED pulses magenta): a drone sampled and granulated again. Switch "
+     "DOWN: SHIFT, and a rest while the sequencer records.",
+     "Left Shift holds it; Space while it is held resamples; feed it a sound with the INPUT buttons in the bar."},
     {kKeyboard, "The keyboard",
      "The middle key plays the sound at its own speed; the others pitch it. The LEDs of the lower row show "
      "where each sounding voice is reading in the sound.",

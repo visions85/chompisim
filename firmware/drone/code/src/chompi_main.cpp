@@ -54,8 +54,8 @@ bool testLoad; // To make sure the sounds don't get loaded until later
 daisysp::Reverb DSY_DTCMRAM_BSS reverb;
 chompi::InterpolatedDelayLine::AudioSample DSY_SDRAM_BSS del_mem[kMaxDelayTime];
 
-/** The sounds: fifteen slots of ten seconds of stereo int16, 28.8 MB of SDRAM. */
-int16_t DSY_SDRAM_BSS sampleMemory[grain::kNumSounds * grain::kSoundSamples];
+/** The sounds: fourteen slots of ten seconds and a minute for the recording, stereo int16, 38.4 MB of SDRAM. */
+int16_t DSY_SDRAM_BSS sampleMemory[grain::kBankSamples];
 /** The sound-on-sound loop (up to a minute of stereo int16) and the shimmer's window. */
 int16_t DSY_SDRAM_BSS loopMemory[grain::kLoopSamples];
 float DSY_SDRAM_BSS shimmerMemory[chompi::OctaveShifter::kSize];

@@ -563,7 +563,12 @@ namespace chompi
 
             if (engine_->isRecording()) {
                 r = 1.f;
-                g = b = ((now / 150) % 2) ? .1f : 0.f;
+                if (engine_->isResampling()) { // magenta pulse: the instrument samples itself
+                    g = 0.f;
+                    b = ((now / 150) % 2) ? .7f : .25f;
+                }
+                else
+                    g = b = ((now / 150) % 2) ? .1f : 0.f;
             }
             else if (chompi_key_pressed) {
                 if (!switch_state) {
@@ -684,6 +689,14 @@ namespace chompi
             // CC buttons
             case static_cast<uint16_t>(Hardware::SwId::KEY_27): // play
             {
+                // held CHOMPI records the inputs; PLAY while it is held records what the
+                // instrument plays instead (resampling), from the start of the slot
+                if (chompi_key_pressed && !switch_state && engine_->isRecording())
+                {
+                    if (rising)
+                        engine_->startRecording(myEngine::RecordSource::OUTPUT);
+                    break;
+                }
                 seq_->playButton(rising);
                 last_arm_blink = System::GetNow();
                 break;

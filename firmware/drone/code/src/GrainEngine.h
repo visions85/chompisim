@@ -78,6 +78,10 @@ namespace grain
     constexpr float    kSprayRangeS    = 1.f;            /**< full spray = +/- one second around the playhead */
     constexpr uint32_t kLoopSeconds    = 60;             /**< the longest sound-on-sound loop */
     constexpr uint32_t kLoopSamples    = kLoopSeconds * 48000 * 2; /**< stereo int16: 11.5 MB of SDRAM */
+    constexpr uint32_t kRecordSeconds  = 60;             /**< the recording slot holds a minute */
+    constexpr uint32_t kRecordFrames   = kRecordSeconds * 48000;
+    constexpr uint32_t kRecordSamples  = kRecordFrames * 2;
+    constexpr size_t   kBankSamples    = size_t(kNumSounds - 1) * kSoundSamples + kRecordSamples; /**< 38.4 MB of SDRAM */
     constexpr float    kS16ToFloat     = 1.f / 32768.f;
 
     /** One sound in SDRAM. */
@@ -311,7 +315,9 @@ namespace grain
     {
         bool     active = false;
         bool     reverse = false;
-        float    pos    = 0.f;   /**< read position, frames */
+        int32_t  pos_i  = 0;     /**< read position: whole frames, and the fraction apart, so that
+                                      a minute-long sound stays in tune to its end */
+        float    pos_f  = 0.f;
         float    step   = 1.f;   /**< frames per sample, signed */
         uint32_t age    = 0;
         uint32_t length = 1;
@@ -383,7 +389,10 @@ namespace grain
         {
             position_ = fclamp(v, 0.f, 1.f);
             if(sound_ && sound_->frames)
-                playhead_ = position_ * float(sound_->frames - 1);
+            {
+                playhead_i_ = uint32_t(position_ * float(sound_->frames - 1));
+                playhead_f_ = 0.f;
+            }
         }
 
         void noteOn()
@@ -411,7 +420,7 @@ namespace grain
         /** 0..1 position of the playhead in the sound. */
         float playhead() const
         {
-            return sound_ && sound_->frames ? playhead_ / float(sound_->frames) : 0.f;
+            return sound_ && sound_->frames ? (float(playhead_i_) + playhead_f_) / float(sound_->frames) : 0.f;
         }
 
         void Process(float* l, float* r)
@@ -423,16 +432,21 @@ namespace grain
                 return;
             }
             const uint32_t frames = s->frames;
-            const float    ff     = float(frames);
 
             if(spawn_counter_ == 0)
                 Spawn(frames);
             else
                 spawn_counter_--;
 
-            playhead_ += scan_rate_;
-            while(playhead_ >= ff)
-                playhead_ -= ff;
+            playhead_f_ += scan_rate_;
+            if(playhead_f_ >= 1.f)
+            {
+                const uint32_t whole = uint32_t(playhead_f_);
+                playhead_f_ -= float(whole);
+                playhead_i_ += whole;
+                while(playhead_i_ >= frames)
+                    playhead_i_ -= frames;
+            }
 
             const int16_t* data = s->data;
             const float*   wa   = win_->table[win_a_];
@@ -444,20 +458,30 @@ namespace grain
                     continue;
                 const int   wi = int(float(g.age) * g.inv_length * float(kWindowSize - 1));
                 const float w  = wa[wi] + (wb[wi] - wa[wi]) * win_mix_;
-                float       p  = g.pos;
-                if(p < 0.f)
-                    p += ff;
-                else if(p >= ff)
-                    p -= ff;
-                const uint32_t i0   = uint32_t(p);
-                const float    frac = p - float(i0);
+                uint32_t i0 = uint32_t(g.pos_i);
+                if(i0 >= frames) // the sound was swapped for a shorter one under the grain
+                {
+                    i0 %= frames;
+                    g.pos_i = int32_t(i0);
+                }
+                const float    frac = g.pos_f;
                 const uint32_t i1   = (i0 + 1 >= frames) ? 0 : i0 + 1;
                 const float    sl   = float(data[i0 * 2]) + (float(data[i1 * 2]) - float(data[i0 * 2])) * frac;
                 const float    sr   = float(data[i0 * 2 + 1]) + (float(data[i1 * 2 + 1]) - float(data[i0 * 2 + 1])) * frac;
                 const float    a    = w * g.amp;
                 suml += sl * a * g.pan_l;
                 sumr += sr * a * g.pan_r;
-                g.pos += g.step;
+                g.pos_f += g.step;
+                const int whole = int(floorf(g.pos_f));
+                if(whole != 0)
+                {
+                    g.pos_f -= float(whole);
+                    g.pos_i += whole;
+                    if(g.pos_i >= int32_t(frames))
+                        g.pos_i -= int32_t(frames);
+                    else if(g.pos_i < 0)
+                        g.pos_i += int32_t(frames);
+                }
                 if(++g.age >= g.length)
                     g.active = false;
             }
@@ -491,11 +515,13 @@ namespace grain
             if(g)
             {
                 const float ff = float(frames);
-                float start = playhead_ + drift_offset_ * ff + (Rand() * 2.f - 1.f) * spray_ * kSprayRangeS * sr_;
+                float start = float(playhead_i_) + playhead_f_ + drift_offset_ * ff
+                              + (Rand() * 2.f - 1.f) * spray_ * kSprayRangeS * sr_;
                 while(start < 0.f)
                     start += ff;
                 while(start >= ff)
                     start -= ff;
+                const float start_whole = floorf(start);
                 const bool reverse = Rand() < reverse_prob_;
                 const float pan    = .5f + (Rand() - .5f) * (.6f + .4f * detune_);
                 // unison: a random detune, up to 50 cents each way at full
@@ -509,7 +535,8 @@ namespace grain
                 }
                 g->active     = true;
                 g->reverse    = reverse;
-                g->pos        = start;
+                g->pos_i      = int32_t(start_whole) < int32_t(frames) ? int32_t(start_whole) : 0;
+                g->pos_f      = start - start_whole;
                 g->step       = (reverse ? -rate_ : rate_) * ratio;
                 g->age        = 0;
                 g->length     = uint32_t(len);
@@ -529,7 +556,9 @@ namespace grain
         uint32_t       rng_   = 1;
         float          rate_  = 1.f;
         float          size_s_ = .1f, overlap_ = 2.f, grain_gain_ = .6f, spray_ = 0.f, scan_rate_ = 1.f;
-        float          position_ = 0.f, playhead_ = 0.f, reverse_prob_ = 0.f, win_mix_ = 0.f, drift_offset_ = 0.f;
+        float          position_ = 0.f, reverse_prob_ = 0.f, win_mix_ = 0.f, drift_offset_ = 0.f;
+        uint32_t       playhead_i_ = 0;  /**< the playhead: whole frames and the fraction apart */
+        float          playhead_f_ = 0.f;
         float          detune_ = 0.f, harmonics_ = 0.f;
         int            win_a_ = 0;
         uint32_t       spawn_counter_ = 0;
@@ -764,7 +793,7 @@ class myEngine {
         }
 
         // the CHOMPI key records the input into the last sound, and you hear what goes in
-        if (recording_) {
+        if (recording_ && rec_source_ == RecordSource::INPUTS) {
             grain::Sound& s = bank_->sounds[grain::kRecordSound];
             for (size_t i = 0; i < size; ++i) {
                 float il = line_in_ ? in[2][i] * grain::kLineGain : in[0][i] * grain::kMicGain;
@@ -775,7 +804,7 @@ class myEngine {
                 s.data[rec_frames_ * 2 + 1] = int16_t(ir * 32767.f);
                 out[0][i] += il * .35f;
                 out[1][i] += ir * .35f;
-                if (++rec_frames_ >= grain::kSoundFrames) {
+                if (++rec_frames_ >= grain::kRecordFrames) {
                     stopRecording();
                     break;
                 }
@@ -784,6 +813,19 @@ class myEngine {
 
         ApplyFX(out[0], out[1], size);
         ApplyLooper(out[0], out[1], size);
+
+        // resampling: what comes out of the effects goes into the last sound
+        if (recording_ && rec_source_ == RecordSource::OUTPUT) {
+            grain::Sound& s = bank_->sounds[grain::kRecordSound];
+            for (size_t i = 0; i < size; ++i) {
+                s.data[rec_frames_ * 2]     = int16_t(f2s16(out[0][i]));
+                s.data[rec_frames_ * 2 + 1] = int16_t(f2s16(out[1][i]));
+                if (++rec_frames_ >= grain::kRecordFrames) {
+                    stopRecording();
+                    break;
+                }
+            }
+        }
 
         for (size_t i = 0; i < size; ++i) {
             fonepole(final_lim_, final_lim_target_, .001f);
@@ -969,11 +1011,18 @@ class myEngine {
     bool soundLoaded(int idx) { return idx >= 0 && idx < grain::kNumSounds && bank_->sounds[idx].loaded; }
 
     // ---- recording from the inputs into the last sound ----
-    void startRecording() {
+    enum class RecordSource { INPUTS, OUTPUT };
+    /** Records into the last sound, up to a minute: the inputs, or (resampling) what the
+     *  instrument itself plays. While it resamples, the old recording stays playable, so
+     *  a drone made of the last recording can be sampled over itself. */
+    void startRecording(RecordSource src = RecordSource::INPUTS) {
         grain::Sound& s = bank_->sounds[grain::kRecordSound];
-        s.frames = 0;
-        s.loaded = false;
+        if (src == RecordSource::INPUTS) {
+            s.frames = 0;
+            s.loaded = false;
+        }
         rec_frames_ = 0;
+        rec_source_ = src;
         recording_ = true;
     }
     void stopRecording() {
@@ -985,7 +1034,8 @@ class myEngine {
         if (s.loaded) selectSound(grain::kRecordSound);
     }
     bool isRecording() { return recording_; }
-    float recordProgress() { return float(rec_frames_) / float(grain::kSoundFrames); }
+    bool isResampling() { return recording_ && rec_source_ == RecordSource::OUTPUT; }
+    float recordProgress() { return float(rec_frames_) / float(grain::kRecordFrames); }
     void setLineIn(bool plugged) { line_in_ = plugged; }
 
     /** 0..1 playhead of a voice, for the LEDs; -1 when the voice is silent. */
@@ -1317,6 +1367,7 @@ class myEngine {
     grain::SampleLoader* loader_;
     int sound_ = 0;
     bool recording_ = false;
+    RecordSource rec_source_ = RecordSource::INPUTS;
     bool line_in_ = false;
     uint32_t rec_frames_ = 0;
 

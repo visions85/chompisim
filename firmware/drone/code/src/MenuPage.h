@@ -387,7 +387,6 @@ namespace chompi
             if(stepsPerRevolution > 0)
                 return false; // fall through to normalpage
 
-            float r, g, b;
             if(preset_mode == PresetMode::NONE)
             {
                 if(encoderID == 0)

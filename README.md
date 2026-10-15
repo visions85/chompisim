@@ -354,10 +354,10 @@ others (`chompi-sim-gui-drone`, `chompi-sim-drone`). It was called GRAIN
 until October 2026: a card marked `CHOMPI_GRAIN.txt`, and the `GRAIN/`
 folder of a shared card, still work.
 
-Sounds live in SDRAM as 48 kHz 16-bit stereo, up to ten seconds each: the
-first fourteen `.wav` files on the card in name order (48 kHz 16-bit PCM, mono
-or stereo; anything else is skipped, as are TAPE's `_double` copies) plus one
-recorded from the inputs. `scripts/make-drone-card.py cards/drone` makes a
+Sounds live in SDRAM as 48 kHz 16-bit stereo: the first fourteen `.wav` files
+on the card in name order (48 kHz 16-bit PCM, mono or stereo, up to ten
+seconds each; anything else is skipped, as are TAPE's `_double` copies) plus
+one recorded from the inputs, up to a minute long. `scripts/make-drone-card.py cards/drone` makes a
 card from the factory TAPE samples in the checkout (bank A of the cubbi
 instrument; `--instrument jammi`, `--bank b` pick others) and writes the
 marker file the launcher reads the firmware name from; `--synthetic` makes
@@ -378,8 +378,13 @@ own speed. The knobs:
 
 The lower row of key LEDs shows where each sounding voice is reading in the
 sound. With the mode switch up, holding CHOMPI records the microphone (or the
-aux input, with a cable in the jack) into the fifteenth sound and selects it,
-so you can play what you just sampled; in the simulator that is the INPUT bar.
+aux input, with a cable in the jack) into the fifteenth sound, for up to a
+minute, and selects it, so you can play what you just sampled; in the
+simulator that is the INPUT bar. Press PLAY while holding CHOMPI and the
+instrument records what it plays instead, after the effects and the looper
+(resampling; the CHOMPI LED pulses magenta): a drone sampled and granulated
+again, as many times as you like, since the old recording stays playable
+while the new one is taken over it.
 The menu (mode switch down, CHOMPI) is WAVE's: white keys are presets, the
 black keys octave, gate, the LFO switches, erase, copy and save, A and B set
 attack and release, and the PITCH knob's second page picks the sound.
@@ -427,11 +432,18 @@ in the looper under the shimmer.
 
 `examples/drone.txt` plays the first sound, changes the cloud, samples
 `examples/tone.wav` and plays it back; `examples/drone-sounds.txt` picks
-sounds over MIDI. For the hardware, `firmware/drone/code/src`
-builds like WAVE (`make` with the GNU Arm Embedded 10.3 toolchain, with
-`LIBS_DIR` pointing at a CHOMPI `code/libs` folder); it has not been run on a
-device yet, so treat it as a desktop-tested starting point and watch the CPU
-load with dense clouds.
+sounds over MIDI.
+
+For the instrument, `scripts/build-chip.sh` builds `firmware/drone/code/src`
+the way WAVE is built: an SRAM app for CHOMPI's bootloader, with the GNU Arm
+Embedded toolchain and the vendored libDaisy and DaisySP of the checkout.
+It fits: with GCC 13.2 the code takes 214.5 KB of the 232 KB code region
+(WAVE built the same way takes 204.8 KB), the data 186 KB of 280 KB, and
+the SDRAM 49 MB of 64 MB (the sounds, the minute of recording, the loop and
+the delay). It has not been run on a device yet, so treat it as a
+desktop-tested build and watch the CPU load with dense clouds: every grain
+reads the SDRAM, and a long sound keeps its grain positions as whole frames
+plus a fraction so it stays in tune to its end.
 
 ## One card, several firmwares (prototype)
 
